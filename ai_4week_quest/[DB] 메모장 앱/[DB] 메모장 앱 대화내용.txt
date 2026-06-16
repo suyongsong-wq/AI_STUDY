@@ -1,0 +1,115 @@
+==================================================================
+ [DB] 메모장 앱 — 제작 대화내용
+ 하버스쿨 AI 교육 · 4주차 퀘스트 (15 Point)
+ 목표: PostgreSQL DB 서버를 활용해서 메모장 앱을 만드세요!
+==================================================================
+
+[요구사항]
+- 메모를 작성하고 목록으로 조회, 수정, 삭제할 수 있는 앱
+- 모든 메모는 PostgreSQL DB에 저장되어 앱을 껐다 켜도 유지되어야 함
+- memos 테이블을 만들고 id, title, content, created_at 컬럼으로 시작
+- pg (node-postgres) 라이브러리로 서버에서 DB에 연결
+- 개발자도구 Network 탭에서 메모 저장/조회 API 요청이 잘 나가는지 확인
+- (보너스 +5P) 메모를 수정하거나 검색하는 기능 추가
+
+
+------------------------------------------------------------------
+1. 메모장 UI 만들기
+------------------------------------------------------------------
+나: ai_4week_quest 폴더에서 시작. 간단한 메모장 앱 UI 그려줘.
+
+AI: single-react-dev 에이전트로 CDN 기반 React + Tailwind CSS 단일
+    index.html 메모장을 제작했습니다.
+    - 메모 작성(제목+내용) / 목록 / 수정 / 삭제 / 검색
+    - 처음엔 localStorage에 저장 (이후 DB로 전환)
+
+
+------------------------------------------------------------------
+2. Supabase PostgreSQL DB 연결
+------------------------------------------------------------------
+나: 이제 DB 연결해줘.
+    postgresql://postgres.ibxhnwovdtnfttfzqpos:[YOUR-PASSWORD]
+    @aws-1-us-west-1.pooler.supabase.com:6543/postgres
+
+AI: single-server-specialist 에이전트로 백엔드를 구성했습니다.
+    - server.js : Express + pg(node-postgres)
+    - Supabase pooler 연결이라 SSL 설정 필요
+      (ssl: { rejectUnauthorized: false })
+    - 서버 시작 시 memos 테이블 자동 생성
+      (id, title, content, created_at, updated_at)
+    - CRUD REST API
+        GET    /api/memos       전체 목록(최신순)
+        POST   /api/memos       생성
+        PUT    /api/memos/:id   수정
+        DELETE /api/memos/:id   삭제
+    - 비밀번호는 코드에 하드코딩하지 않고 .env(DATABASE_URL)에서 읽음
+    - .gitignore로 .env, node_modules 제외 (비밀번호 깃에 안 올라감)
+
+나: (DB 비밀번호 전달)
+
+AI: 비밀번호에 특수문자(* $ - .)가 있어 연결 문자열에서 URL 인코딩 처리.
+      *  ->  %2A
+      $  ->  %24
+    .env의 DATABASE_URL에 안전하게 반영했습니다.
+    ※ 비밀번호를 채팅에 평문 입력했으니, 제출 후 Supabase에서
+       비밀번호 재설정(rotate) 권장.
+
+
+------------------------------------------------------------------
+3. DB 연결 테스트
+------------------------------------------------------------------
+나: DB 연결 테스트.
+
+AI: 서버를 띄우고 실제 Supabase DB로 CRUD를 모두 검증했습니다.
+    - POST   생성  -> {"success":true, ...}
+    - GET    조회  -> 목록 정상 반환
+    - PUT    수정  -> updated_at 갱신 확인
+    - DELETE 삭제  -> 정상 삭제
+    - [핵심] 서버를 완전히 껐다가 다시 켰는데도 메모가 그대로 남아있음
+             => 데이터가 브라우저가 아니라 실제 PostgreSQL DB에 저장됨을 증명.
+             => "앱을 껐다 켜도 유지" 요구사항 충족.
+
+나: 브라우저 열어서 확인해줘.
+
+AI: 브라우저로 앱을 띄워 확인. 헤더 "📝 간단한 메모장 · PostgreSQL 저장",
+    /api/memos REST API 호출 정상 확인.
+
+
+------------------------------------------------------------------
+4. 다이어리 감성 디자인으로 변경
+------------------------------------------------------------------
+나: 다이어리 느낌나는 메모장 버전으로 디자인 변경해줘.
+
+AI: 기능(DB 연동·CRUD·검색)은 그대로 두고 디자인만 전면 교체했습니다.
+    - 따뜻한 종이 톤 배경 + 미세한 점 질감
+    - 손글씨 폰트(Gaegu) + 명조체(Nanum Myeongjo)
+    - 줄노트 + 왼쪽 빨간 여백선, 마스킹테이프 장식
+    - 살짝 기울어진 스크랩북풍 카드
+    - 일기식 날짜 "2026년 6월 16일 (화) 22:30"
+    - 감성 카피: "오늘의 기록" / "다이어리에 붙이기" /
+      삭제="찢기" / 검색="추억 더듬기"
+
+
+------------------------------------------------------------------
+[최종 결과물]
+------------------------------------------------------------------
+파일 구성:
+  server.js        Express + pg, Supabase 연결, memos 테이블 자동생성, CRUD API
+  index.html       React + Tailwind 다이어리 UI (REST API fetch)
+  package.json     express, pg, dotenv
+  .env.example     DATABASE_URL 예시 (비밀번호 입력 안내)
+  .gitignore       .env, node_modules 제외
+  README.md        프로젝트 설명/실행법
+
+실행 방법:
+  1) cd "ai_4week_quest/[DB] 메모장 앱"
+  2) npm install
+  3) .env 파일의 [YOUR-PASSWORD]를 실제 Supabase DB 비밀번호로 교체
+  4) npm start   ->  http://localhost:3000
+
+요구사항 충족:
+  [O] memos 테이블 (id, title, content, created_at + updated_at)
+  [O] pg(node-postgres)로 서버에서 DB 연결
+  [O] 작성/조회/수정/삭제 모두 DB 저장 (껐다 켜도 유지)
+  [O] 보너스(+5P): 수정 기능 + 검색 기능
+==================================================================

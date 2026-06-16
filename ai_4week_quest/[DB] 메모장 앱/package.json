@@ -1,0 +1,14 @@
+{
+  "name": "memo-app",
+  "version": "1.0.0",
+  "description": "Supabase PostgreSQL에 연결된 메모장 앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

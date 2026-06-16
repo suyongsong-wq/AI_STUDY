@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>나의 다이어리</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #fbf6ea;
+      --ink: #4a3f35;
+      --accent: #b06a4f;
+      --line: #d9c7a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Nanum Myeongjo', serif;
+      color: var(--ink);
+      background-color: #e9ddc6;
+      background-image:
+        radial-gradient(circle at 20% 15%, rgba(176,106,79,.06), transparent 45%),
+        radial-gradient(circle at 80% 85%, rgba(120,90,60,.07), transparent 45%);
+      min-height: 100vh;
+    }
+    .font-hand { font-family: 'Gaegu', cursive; }
+    /* 종이 질감 + 미세한 점 패턴 */
+    .paper {
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(rgba(217,199,168,.0) 0, rgba(217,199,168,.0)),
+        radial-gradient(rgba(176,106,79,.05) 1px, transparent 1px);
+      background-size: auto, 18px 18px;
+    }
+    /* 줄노트 느낌(가로줄) */
+    .ruled {
+      background-image: repeating-linear-gradient(var(--paper) 0 30px, var(--line) 30px 31px);
+      background-attachment: local;
+    }
+    /* 왼쪽 빨간 여백선 */
+    .margin-line { position: relative; }
+    .margin-line::before {
+      content: ""; position: absolute; top: 0; bottom: 0; left: 34px;
+      width: 1.5px; background: rgba(190,90,70,.45);
+    }
+    /* 마스킹 테이프 */
+    .tape {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+      width: 96px; height: 26px;
+      background: rgba(210,180,120,.55);
+      border-left: 1px dashed rgba(255,255,255,.5);
+      border-right: 1px dashed rgba(255,255,255,.5);
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .stitch { border: 1.5px dashed rgba(176,106,79,.4); }
+    .card-shadow { box-shadow: 0 8px 24px -10px rgba(80,55,35,.4); }
+    ::-webkit-scrollbar { width: 9px; }
+    ::-webkit-scrollbar-thumb { background: #c9b48c; border-radius: 8px; }
+    ::placeholder { color: #b8a98c; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ======== API helper (서버 → Supabase PostgreSQL) ========
+    const api = {
+      async list() {
+        const res = await fetch("/api/memos");
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || "목록 로드 실패");
+        return json.data;
+      },
+      async create(data) {
+        const res = await fetch("/api/memos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || "생성 실패");
+        return json.data;
+      },
+      async update(id, data) {
+        const res = await fetch(`/api/memos/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || "수정 실패");
+        return json.data;
+      },
+      async remove(id) {
+        const res = await fetch(`/api/memos/${id}`, { method: "DELETE" });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || "삭제 실패");
+      },
+    };
+
+    // ======== Design System (다이어리 테마) ========
+    function Button({ variant = "primary", size = "md", className = "", ...props }) {
+      const base = "inline-flex items-center justify-center font-hand font-bold rounded-lg transition focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px";
+      const variants = {
+        primary: "bg-[#b06a4f] text-[#fbf6ea] hover:bg-[#9a5a41] shadow-sm",
+        secondary: "bg-[#e7d8bd] text-[#6b5847] hover:bg-[#ddc9a8] border border-[#cbb88f]",
+        ghost: "bg-transparent text-[#8a7459] hover:bg-[#efe3cb]",
+        danger: "bg-transparent text-[#b35742] hover:bg-[#f4e0d8]",
+      };
+      const sizes = { sm: "text-base px-3 py-1", md: "text-lg px-5 py-2" };
+      return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />;
+    }
+
+    function Input({ className = "", ...props }) {
+      return (
+        <input
+          className={`w-full bg-transparent border-b-2 border-[#cbb88f] px-1 py-2 text-lg font-hand text-[#4a3f35] focus:outline-none focus:border-[#b06a4f] transition ${className}`}
+          {...props}
+        />
+      );
+    }
+
+    function Textarea({ className = "", ...props }) {
+      return (
+        <textarea
+          className={`w-full bg-transparent px-1 py-1 text-[17px] leading-[30px] ruled text-[#4a3f35] focus:outline-none resize-none ${className}`}
+          {...props}
+        />
+      );
+    }
+
+    // ======== Helpers ========
+    const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+    function formatDiaryDate(ts) {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    // ======== MemoForm (다이어리 작성 페이지) ========
+    function MemoForm({ onSubmit, editing, onCancel }) {
+      const [title, setTitle] = useState("");
+      const [content, setContent] = useState("");
+
+      useEffect(() => {
+        if (editing) { setTitle(editing.title); setContent(editing.content); }
+        else { setTitle(""); setContent(""); }
+      }, [editing]);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim() && !content.trim()) return;
+        onSubmit({ title: title.trim() || "(제목 없음)", content: content.trim() });
+        setTitle(""); setContent("");
+      };
+
+      return (
+        <div className="relative paper card-shadow rounded-[14px] p-7 pt-9 margin-line">
+          <div className="tape"></div>
+          <h2 className="font-hand text-2xl text-[#b06a4f] mb-1 ml-6">
+            {editing ? "✏️ 오늘의 기록 고치기" : "🖋️ 오늘의 기록"}
+          </h2>
+          <p className="font-hand text-[#a8957a] text-base mb-5 ml-6">
+            {editing ? "내용을 다듬어 보세요" : "마음에 남은 순간을 적어보세요"}
+          </p>
+          <form onSubmit={handleSubmit} className="ml-6 space-y-4">
+            <Input placeholder="제목 (오늘의 한 줄)" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Textarea
+              placeholder="오늘 있었던 일을 자유롭게 적어보세요..."
+              rows={editing ? 8 : 6}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" className="flex-1">{editing ? "수정 완료" : "다이어리에 붙이기"}</Button>
+              {editing && <Button type="button" variant="secondary" onClick={onCancel}>취소</Button>}
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    // ======== MemoItem (다이어리 한 장) ========
+    const ROTATIONS = ["-1.2deg", "0.8deg", "-0.6deg", "1.1deg"];
+    function MemoItem({ memo, index, onEdit, onDelete }) {
+      const rotate = ROTATIONS[index % ROTATIONS.length];
+      return (
+        <div
+          className="relative paper card-shadow rounded-[12px] p-5 pl-12 margin-line transition hover:-translate-y-1 hover:shadow-lg"
+          style={{ transform: `rotate(${rotate})` }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="font-hand font-bold text-xl text-[#5a4a3a] break-words flex-1 leading-snug">
+              {memo.title}
+            </h3>
+            <div className="flex gap-1 shrink-0">
+              <Button size="sm" variant="ghost" onClick={() => onEdit(memo)}>고치기</Button>
+              <Button size="sm" variant="danger" onClick={() => onDelete(memo.id)}>찢기</Button>
+            </div>
+          </div>
+          {memo.content && (
+            <p className="text-[15.5px] leading-[28px] text-[#5d5044] mt-2 whitespace-pre-wrap break-words">
+              {memo.content}
+            </p>
+          )}
+          <p className="font-hand text-[15px] text-[#b06a4f] mt-4 text-right">
+            {memo.updatedAt !== memo.createdAt ? "✎ 고친 날 · " : "🕯 "}
+            {formatDiaryDate(memo.updatedAt)}
+          </p>
+        </div>
+      );
+    }
+
+    // ======== MemoList ========
+    function MemoList({ memos, onEdit, onDelete }) {
+      if (memos.length === 0) {
+        return (
+          <div className="text-center text-[#a8957a] py-20 font-hand">
+            <p className="text-5xl mb-3">📖</p>
+            <p className="text-xl">아직 빈 다이어리예요.</p>
+            <p className="text-base mt-1">첫 페이지를 채워보세요 ✍️</p>
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-6">
+          {memos.map((memo, i) => (
+            <MemoItem key={memo.id} memo={memo} index={i} onEdit={onEdit} onDelete={onDelete} />
+          ))}
+        </div>
+      );
+    }
+
+    // ======== App ========
+    function App() {
+      const [memos, setMemos] = useState([]);
+      const [editing, setEditing] = useState(null);
+      const [query, setQuery] = useState("");
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
+
+      useEffect(() => {
+        api.list()
+          .then((data) => setMemos(data))
+          .catch((e) => setError(e.message))
+          .finally(() => setLoading(false));
+      }, []);
+
+      const addMemo = async (data) => {
+        try {
+          const created = await api.create(data);
+          setMemos((prev) => [created, ...prev]);
+          setError("");
+        } catch (e) { setError(e.message); }
+      };
+
+      const updateMemo = async (data) => {
+        try {
+          const updated = await api.update(editing.id, data);
+          setMemos((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+          setEditing(null);
+          setError("");
+        } catch (e) { setError(e.message); }
+      };
+
+      const deleteMemo = async (id) => {
+        if (!window.confirm("이 페이지를 찢어버릴까요?")) return;
+        try {
+          await api.remove(id);
+          setMemos((prev) => prev.filter((m) => m.id !== id));
+          if (editing && editing.id === id) setEditing(null);
+          setError("");
+        } catch (e) { setError(e.message); }
+      };
+
+      const filtered = memos.filter((m) =>
+        (m.title + m.content).toLowerCase().includes(query.toLowerCase())
+      );
+
+      return (
+        <div className="min-h-screen">
+          <header className="text-center pt-12 pb-8 px-4">
+            <p className="font-hand text-[#b06a4f] text-lg tracking-widest">— My Little Diary —</p>
+            <h1 className="font-hand font-bold text-5xl text-[#5a4a3a] mt-1">나의 다이어리</h1>
+            <p className="font-hand text-[#a8957a] text-lg mt-2">
+              총 {memos.length}장의 기록 · 종이 대신 PostgreSQL에 차곡차곡 📚
+            </p>
+          </header>
+
+          <main className="max-w-5xl mx-auto px-5 pb-20 grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="lg:sticky lg:top-8 lg:self-start">
+              <MemoForm
+                onSubmit={editing ? updateMemo : addMemo}
+                editing={editing}
+                onCancel={() => setEditing(null)}
+              />
+            </div>
+
+            <div>
+              <div className="relative mb-7">
+                <Input
+                  placeholder="🔍 추억 더듬기 (제목·내용 검색)"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              {error && (
+                <div className="mb-5 font-hand text-base text-[#b35742] bg-[#f6e3dc] stitch rounded-lg px-4 py-2">
+                  ⚠️ {error}
+                </div>
+              )}
+              {loading ? (
+                <div className="text-center text-[#a8957a] py-20 font-hand text-xl">📔 다이어리 펼치는 중...</div>
+              ) : (
+                <MemoList memos={filtered} onEdit={setEditing} onDelete={deleteMemo} />
+              )}
+            </div>
+          </main>
+
+          <footer className="text-center pb-10 font-hand text-[#b8a98c] text-base">
+            ✿ 오늘도 한 페이지 ✿
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
