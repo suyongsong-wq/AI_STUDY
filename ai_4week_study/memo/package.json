@@ -1,0 +1,12 @@
+{
+  "name": "memo-postgres",
+  "version": "1.0.0",
+  "description": "하버스쿨 AI 교육 4주차 - 메모장 앱 (Supabase Postgres 연동)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "pg": "^8.21.0"
+  }
+}

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧊 냉장고 재료 & 레시피 관리앱</title>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel은 최신(7.26.x)에 text/babel 변환 버그가 있어 안정 버전으로 고정 -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
+    /* 냉장고 문이 살짝 열리는 느낌의 그림자 */
+    .fridge-shadow { box-shadow: 0 30px 60px -15px rgba(30,41,59,.35), inset 0 1px 0 rgba(255,255,255,.6); }
+    .shelf { background-image: linear-gradient(to bottom, rgba(255,255,255,.5), rgba(226,232,240,.25)); }
+    .note { box-shadow: 0 6px 14px -6px rgba(0,0,0,.35); }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 min-h-screen">
+  <div id="root">
+    <div style="text-align:center;padding:60px;color:#94a3b8;font-size:15px">⏳ 화면을 불러오는 중입니다...</div>
+  </div>
+
+  <!-- CDN 로드 실패/JS 오류를 흰 화면 대신 눈에 보이게 표시 -->
+  <script>
+    window.addEventListener('error', function (e) {
+      var root = document.getElementById('root');
+      if (root) {
+        root.innerHTML = '<div style="max-width:600px;margin:40px auto;padding:24px;border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;font-size:14px;line-height:1.6">' +
+          '<b>⚠️ 화면을 그리는 중 오류가 발생했습니다.</b><br>' +
+          (e.message || e.type) + '<br><br>' +
+          '<span style="color:#7f1d1d">CDN(인터넷)에서 React/Tailwind를 못 불러왔을 수 있어요. 광고차단 확장프로그램을 끄거나, 다른 브라우저(크롬)로 열어보세요.</span></div>';
+      }
+    });
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ===== 카테고리 정의 (재료를 분류하는 태그) =====
+    const CATEGORIES = [
+      { key: '채소', emoji: '🥬', color: 'bg-green-100 text-green-800 border-green-200' },
+      { key: '육류', emoji: '🥩', color: 'bg-red-100 text-red-800 border-red-200' },
+      { key: '유제품', emoji: '🧀', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+      { key: '양념', emoji: '🧂', color: 'bg-purple-100 text-purple-800 border-purple-200' },
+      { key: '기타', emoji: '📦', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+    ];
+    const catStyle = (cat) => (CATEGORIES.find(c => c.key === cat) || CATEGORIES[4]);
+
+    // ===== 유통기한 계산: 남은 일수 + 상태(만료/임박/여유) =====
+    function expiryInfo(expiryDate) {
+      if (!expiryDate) return null;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const exp = new Date(expiryDate + 'T00:00:00');
+      const days = Math.round((exp - today) / 86400000);
+      let status, label, cls;
+      if (days < 0)        { status = 'expired'; label = `만료 D+${-days}`; cls = 'bg-rose-500 text-white border-rose-600'; }
+      else if (days === 0) { status = 'today';   label = '오늘까지';        cls = 'bg-rose-500 text-white border-rose-600'; }
+      else if (days <= 3)  { status = 'soon';    label = `D-${days}`;       cls = 'bg-orange-400 text-white border-orange-500'; }
+      else                 { status = 'ok';      label = `D-${days}`;       cls = 'bg-slate-200 text-slate-500 border-slate-300'; }
+      return { days, status, label, cls };
+    }
+    const urgency = (i) => {
+      const e = expiryInfo(i.expiryDate);
+      if (!e) return 5;            // 유통기한 없음 → 맨 뒤
+      return { expired: 0, today: 1, soon: 2, ok: 3 }[e.status];
+    };
+
+    // ===== "지금 만들 수 있는 요리" 매칭: 냉장고 재료 vs 레시피 재료 =====
+    function parseItems(text) {
+      return (text || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    }
+    function matchRecipe(recipe, fridgeNames) {
+      const items = parseItems(recipe.ingredients);
+      if (items.length === 0) return { total: 0, have: 0, missing: [] };
+      const missing = [];
+      let have = 0;
+      for (const item of items) {
+        // 냉장고 재료명이 레시피 재료 항목에 포함되면 보유로 간주 (예: '당근' ⊂ '당근 1/2개')
+        const ok = fridgeNames.some(n => n && (item.includes(n) || n.includes(item)));
+        if (ok) have++; else missing.push(item);
+      }
+      return { total: items.length, have, missing };
+    }
+
+    // ===== API 헬퍼: 서버와 통신 (same-origin) =====
+    async function api(url, options) {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || '요청에 실패했습니다.');
+      return json.data;
+    }
+
+    function Toast({ message }) {
+      if (!message) return null;
+      return (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-rose-500 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium">
+          {message}
+        </div>
+      );
+    }
+
+    // ===== 재료 칩 (냉장고 안 음식 자석처럼) =====
+    function IngredientChip({ item, onDelete }) {
+      const s = catStyle(item.category);
+      const e = expiryInfo(item.expiryDate);
+      return (
+        <span className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg border shadow-sm text-sm font-medium ${s.color}`}>
+          <span>{s.emoji}</span>
+          <span>{item.name}</span>
+          {e && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${e.cls}`} title={item.expiryDate}>
+              {e.label}
+            </span>
+          )}
+          <button
+            onClick={() => onDelete(item.id)}
+            className="w-5 h-5 rounded-full hover:bg-black/15 flex items-center justify-center text-xs"
+            title="삭제"
+          >✕</button>
+        </span>
+      );
+    }
+
+    // ===== 냉장고 본체 (재료) =====
+    function Fridge({ items, onAdd, onDelete, loading }) {
+      const [name, setName] = useState('');
+      const [category, setCategory] = useState('채소');
+      const [expiry, setExpiry] = useState('');
+
+      const submit = (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        onAdd(name.trim(), category, expiry);
+        setName(''); setExpiry('');
+      };
+
+      // 유통기한 임박/만료 알림 (냉동고 칸에 표시)
+      const alerts = items
+        .filter(i => { const e = expiryInfo(i.expiryDate); return e && e.status !== 'ok'; })
+        .sort((a, b) => urgency(a) - urgency(b));
+
+      // 카테고리별 선반, 각 선반 안에서는 유통기한 임박순 정렬
+      const shelves = CATEGORIES.map(c => ({
+        ...c,
+        list: items.filter(i => (i.category || '기타') === c.key)
+                   .sort((a, b) => urgency(a) - urgency(b)),
+      })).filter(g => g.list.length > 0);
+
+      return (
+        <div className="relative bg-gradient-to-b from-slate-200 to-slate-300 rounded-[2rem] p-3 fridge-shadow">
+          {/* 손잡이 */}
+          <div className="absolute right-1.5 top-8 bottom-8 w-2.5 rounded-full bg-gradient-to-b from-slate-400 to-slate-500 shadow-inner"></div>
+
+          {/* 상단: 냉동고 칸 = 유통기한 알림 */}
+          <div className="bg-gradient-to-br from-sky-50 to-slate-50 rounded-[1.4rem] rounded-b-lg p-4 mb-1.5 border border-white/70">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 tracking-wide">🧊 냉동고 · 유통기한 알림</span>
+              <span className="text-[11px] text-slate-400">총 {items.length}개</span>
+            </div>
+            {alerts.length === 0 ? (
+              <p className="text-sm text-slate-400 mt-2">임박한 재료가 없어요. 신선합니다! ✨</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {alerts.map(i => {
+                  const e = expiryInfo(i.expiryDate);
+                  return (
+                    <span key={i.id} className={`text-xs font-semibold px-2 py-1 rounded-md border ${e.cls}`}>
+                      {i.name} · {e.label}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 본체: 냉장실 = 선반 위 재료들 */}
+          <div className="relative bg-gradient-to-br from-slate-50 to-white rounded-[1.4rem] rounded-t-lg p-5 border border-white/70 min-h-[260px]">
+            <h2 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">🍽️ 냉장실</h2>
+
+            {loading ? (
+              <p className="text-slate-400 text-sm">불러오는 중...</p>
+            ) : items.length === 0 ? (
+              <div className="text-center py-12 text-slate-300">
+                <div className="text-4xl mb-2">🥕</div>
+                <p className="text-sm">냉장고가 비었어요. 아래에서 재료를 채워보세요!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {shelves.map(g => (
+                  <div key={g.key} className="shelf rounded-lg px-2 pt-1 pb-3 border-b-4 border-slate-200/80">
+                    <p className="text-[11px] font-bold text-slate-400 mb-1.5">{g.emoji} {g.key}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {g.list.map(item => (
+                        <IngredientChip key={item.id} item={item} onDelete={onDelete} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 하단: 야채칸(서랍) = 재료 추가 폼 */}
+          <form onSubmit={submit} className="bg-gradient-to-b from-slate-100 to-slate-200 rounded-[1.4rem] rounded-t-lg p-4 mt-1.5 border border-white/60">
+            <p className="text-xs font-bold text-slate-500 mb-2">🗄️ 재료 채우기</p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="재료 이름 (예: 당근)"
+                className="flex-1 min-w-[120px] px-3 py-2 rounded-lg border border-slate-300 bg-white/90 focus:ring-2 focus:ring-sky-300 focus:outline-none text-sm"
+              />
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="px-2 py-2 rounded-lg border border-slate-300 bg-white/90 focus:ring-2 focus:ring-sky-300 focus:outline-none text-sm"
+              >
+                {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.emoji} {c.key}</option>)}
+              </select>
+              <input
+                type="date"
+                value={expiry}
+                onChange={(e) => setExpiry(e.target.value)}
+                title="유통기한 (선택)"
+                className="px-2 py-2 rounded-lg border border-slate-300 bg-white/90 focus:ring-2 focus:ring-sky-300 focus:outline-none text-sm text-slate-600"
+              />
+              <button type="submit" className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-semibold text-sm transition">
+                + 넣기
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">유통기한은 선택이에요. 입력하면 임박할 때 빨갛게 알려드려요.</p>
+          </form>
+        </div>
+      );
+    }
+
+    // ===== 레시피 메모판 (냉장고 옆 자석 메모) =====
+    const NOTE_COLORS = ['bg-yellow-100', 'bg-pink-100', 'bg-sky-100', 'bg-green-100', 'bg-orange-100'];
+
+    function RecipeBoard({ items, fridgeNames, onAdd, onDelete, loading }) {
+      const [title, setTitle] = useState('');
+      const [ingredients, setIngredients] = useState('');
+      const [steps, setSteps] = useState('');
+
+      const submit = (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onAdd(title.trim(), ingredients, steps);
+        setTitle(''); setIngredients(''); setSteps('');
+      };
+
+      return (
+        <div className="space-y-4">
+          {/* 작성 폼 */}
+          <form onSubmit={submit} className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+            <h2 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">🍳 레시피 메모 쓰기</h2>
+            <div className="space-y-2">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="요리명 (예: 김치찌개)"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-amber-300 focus:outline-none text-sm"
+              />
+              <textarea
+                value={ingredients}
+                onChange={(e) => setIngredients(e.target.value)}
+                placeholder="재료 (쉼표로 구분: 김치, 돼지고기, 두부, 대파...)"
+                rows="2"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-amber-300 focus:outline-none text-sm resize-y"
+              />
+              <textarea
+                value={steps}
+                onChange={(e) => setSteps(e.target.value)}
+                placeholder={"조리법 (한 줄에 한 단계씩)\n1. 김치를 볶는다\n2. 물을 붓고 끓인다..."}
+                rows="3"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-amber-300 focus:outline-none text-sm resize-y"
+              />
+              <button type="submit" className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm transition">
+                📌 메모 붙이기
+              </button>
+            </div>
+          </form>
+
+          {/* 메모(레시피) 목록 */}
+          {loading ? (
+            <p className="text-slate-400 text-sm px-2">불러오는 중...</p>
+          ) : items.length === 0 ? (
+            <div className="text-center py-10 text-slate-300">
+              <div className="text-4xl mb-2">📝</div>
+              <p className="text-sm">아직 메모가 없어요.</p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {items.map((r, idx) => {
+                const m = matchRecipe(r, fridgeNames);
+                const canCook = m.total > 0 && m.missing.length === 0;
+                const tilt = idx % 2 === 0 ? '-rotate-1' : 'rotate-1';
+                return (
+                  <article key={r.id} className={`${NOTE_COLORS[idx % NOTE_COLORS.length]} ${tilt} note rounded-md p-4 relative`}>
+                    {/* 자석 */}
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-rose-400 border-2 border-white shadow"></div>
+
+                    <div className="flex items-start justify-between gap-2 mt-1">
+                      <h3 className="font-bold text-slate-800">🍽️ {r.title}</h3>
+                      <button onClick={() => onDelete(r.id)} className="text-xs text-slate-400 hover:text-rose-500 shrink-0" title="삭제">✕</button>
+                    </div>
+
+                    {/* "지금 만들 수 있는 요리" 매칭 뱃지 */}
+                    {m.total > 0 && (
+                      <div className="mt-2">
+                        {canCook ? (
+                          <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-green-500 text-white">✅ 지금 만들 수 있어요!</span>
+                        ) : (
+                          <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-orange-500 text-white"
+                                title={'부족: ' + m.missing.join(', ')}>
+                            ⚠️ {m.missing.length}개 부족 ({m.have}/{m.total})
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {r.ingredients && (
+                      <p className="mt-2 text-sm text-slate-700"><span className="font-semibold text-slate-500">재료 · </span>{r.ingredients}</p>
+                    )}
+                    {r.steps && (
+                      <div className="mt-2 text-sm text-slate-700">
+                        <span className="font-semibold text-slate-500">조리법</span>
+                        <p className="mt-1 whitespace-pre-wrap leading-relaxed">{r.steps}</p>
+                      </div>
+                    )}
+                    {!canCook && m.missing.length > 0 && (
+                      <p className="mt-2 text-[11px] text-orange-600">🛒 부족한 재료: {m.missing.join(', ')}</p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ===== 메인 앱 =====
+    function App() {
+      const [ingredients, setIngredients] = useState([]);
+      const [recipes, setRecipes] = useState([]);
+      const [loadingI, setLoadingI] = useState(true);
+      const [loadingR, setLoadingR] = useState(true);
+      const [toast, setToast] = useState('');
+
+      const showError = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+      useEffect(() => {
+        api('/api/ingredients').then(setIngredients).catch(e => showError(e.message)).finally(() => setLoadingI(false));
+        api('/api/recipes').then(setRecipes).catch(e => showError(e.message)).finally(() => setLoadingR(false));
+      }, []);
+
+      const addIngredient = async (name, category, expiryDate) => {
+        try {
+          const created = await api('/api/ingredients', { method: 'POST', body: JSON.stringify({ name, category, expiryDate }) });
+          setIngredients(prev => [created, ...prev]);
+        } catch (e) { showError(e.message); }
+      };
+      const deleteIngredient = async (id) => {
+        try {
+          await api(`/api/ingredients/${id}`, { method: 'DELETE' });
+          setIngredients(prev => prev.filter(i => i.id !== id));
+        } catch (e) { showError(e.message); }
+      };
+      const addRecipe = async (title, ing, steps) => {
+        try {
+          const created = await api('/api/recipes', { method: 'POST', body: JSON.stringify({ title, ingredients: ing, steps }) });
+          setRecipes(prev => [created, ...prev]);
+        } catch (e) { showError(e.message); }
+      };
+      const deleteRecipe = async (id) => {
+        try {
+          await api(`/api/recipes/${id}`, { method: 'DELETE' });
+          setRecipes(prev => prev.filter(r => r.id !== id));
+        } catch (e) { showError(e.message); }
+      };
+
+      const fridgeNames = ingredients.map(i => i.name);
+      const cookable = recipes.filter(r => { const m = matchRecipe(r, fridgeNames); return m.total > 0 && m.missing.length === 0; }).length;
+
+      return (
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <Toast message={toast} />
+          <header className="text-center mb-8">
+            <h1 className="text-3xl font-extrabold text-slate-800">🧊 우리집 냉장고</h1>
+            <p className="text-slate-500 mt-2 text-sm">재료를 넣고 유통기한을 챙기고, 지금 만들 수 있는 요리를 찾아보세요. (Supabase DB 연동)</p>
+            {recipes.length > 0 && (
+              <p className="mt-2 text-sm font-semibold text-green-600">🍳 지금 바로 만들 수 있는 요리 {cookable}개!</p>
+            )}
+          </header>
+
+          <div className="grid lg:grid-cols-2 gap-8 items-start">
+            <Fridge items={ingredients} onAdd={addIngredient} onDelete={deleteIngredient} loading={loadingI} />
+            <RecipeBoard items={recipes} fridgeNames={fridgeNames} onAdd={addRecipe} onDelete={deleteRecipe} loading={loadingR} />
+          </div>
+
+          <footer className="text-center text-xs text-slate-300 mt-10">
+            하버스쿨 AI 교육 · 4주차 [Server+DB] 퀘스트
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

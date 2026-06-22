@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마음 상담소 - 심리상담 채팅</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* ========================================
+       Custom CSS — Tailwind으로 표현 어려운 애니메이션/스크롤
+       ======================================== */
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+    * { font-family: 'Noto Sans KR', sans-serif; }
+
+    body {
+      background: linear-gradient(135deg, #fdf6f0 0%, #f3ede7 100%);
+    }
+
+    /* 타이핑 인디케이터 점 애니메이션 */
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+    .typing-dot {
+      animation: typingBounce 1.4s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* 메시지 등장 애니메이션 */
+    @keyframes messageIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .message-in {
+      animation: messageIn 0.35s ease-out;
+    }
+
+    /* 온라인 상태 점 펄스 */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(134, 188, 165, 0.5); }
+      50% { box-shadow: 0 0 0 5px rgba(134, 188, 165, 0); }
+    }
+    .online-pulse {
+      animation: pulseGlow 2s infinite;
+    }
+
+    /* 부드러운 스크롤바 */
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb {
+      background: #d9cdc2; border-radius: 9999px;
+    }
+    .chat-scroll { scroll-behavior: smooth; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    // 아바타 — 상담사 프로필 이미지/이니셜
+    function Avatar({ size = 'md', online = false, className = '' }) {
+      const sizes = {
+        sm: 'w-8 h-8 text-sm',
+        md: 'w-10 h-10 text-base',
+        lg: 'w-12 h-12 text-lg',
+      };
+      return (
+        <div className={`relative inline-flex flex-shrink-0 ${className}`}>
+          <div className={`${sizes[size]} rounded-full bg-gradient-to-br from-emerald-300 to-teal-400 flex items-center justify-center text-white shadow-sm`}>
+            <span aria-hidden="true">🌿</span>
+          </div>
+          {online && (
+            <span className={`absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full online-pulse`}
+                  aria-label="온라인"></span>
+          )}
+        </div>
+      );
+    }
+
+    // 버튼 — variant/size 지원
+    function Button({ variant = 'primary', size = 'md', disabled, onClick, className = '', children, ...rest }) {
+      const base = 'inline-flex items-center justify-center font-medium rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95',
+        ghost: 'bg-white/70 text-stone-600 hover:bg-white border border-stone-200',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-4 py-2 text-base',
+        lg: 'w-12 h-12',
+      };
+      return (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onClick}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+          {...rest}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    // ========================================
+    // 🧩 Common / Layout Components
+    // ========================================
+
+    // 상단 헤더 — 상담사 프로필 + 온라인 상태
+    function ChatHeader() {
+      return (
+        <header className="flex items-center gap-3 px-4 sm:px-6 py-4 bg-white/80 backdrop-blur-md border-b border-stone-200/70 rounded-t-3xl">
+          <Avatar size="lg" online />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base sm:text-lg font-bold text-stone-700 truncate">
+              김다온 상담사
+            </h1>
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm text-emerald-500">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+              <span>온라인 · 함께 이야기 나눠요</span>
+            </div>
+          </div>
+          <div className="text-2xl select-none" aria-hidden="true">☘️</div>
+        </header>
+      );
+    }
+
+    // 타이핑 인디케이터 — "상담사가 입력 중..."
+    function TypingIndicator() {
+      return (
+        <div className="flex items-end gap-2 message-in" aria-live="polite">
+          <Avatar size="sm" />
+          <div className="bg-white px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-stone-100">
+            <div className="flex items-center gap-1">
+              <span className="typing-dot w-2 h-2 bg-stone-400 rounded-full"></span>
+              <span className="typing-dot w-2 h-2 bg-stone-400 rounded-full"></span>
+              <span className="typing-dot w-2 h-2 bg-stone-400 rounded-full"></span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 메시지 말풍선 — 좌측(상담사) / 우측(사용자)
+    function MessageBubble({ message }) {
+      const isUser = message.sender === 'user';
+
+      if (isUser) {
+        return (
+          <div className="flex items-end justify-end gap-2 message-in">
+            <span className="text-[11px] text-stone-400 mb-1 flex-shrink-0">{message.time}</span>
+            <div className="max-w-[78%] sm:max-w-[70%] bg-gradient-to-br from-emerald-400 to-teal-500 text-white px-4 py-2.5 rounded-2xl rounded-br-md shadow-sm whitespace-pre-wrap break-words leading-relaxed">
+              {message.text}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex items-end gap-2 message-in">
+          <Avatar size="sm" />
+          <div className="max-w-[78%] sm:max-w-[70%]">
+            <div className="bg-white text-stone-700 px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-stone-100 whitespace-pre-wrap break-words leading-relaxed">
+              {message.text}
+            </div>
+          </div>
+          <span className="text-[11px] text-stone-400 mb-1 flex-shrink-0">{message.time}</span>
+        </div>
+      );
+    }
+
+    // 감정 이모지 빠른 선택 바
+    function EmotionBar({ onSelect }) {
+      const emotions = [
+        { emoji: '😊', label: '기뻐요' },
+        { emoji: '😢', label: '슬퍼요' },
+        { emoji: '😟', label: '불안해요' },
+        { emoji: '😡', label: '화나요' },
+        { emoji: '😴', label: '지쳐요' },
+        { emoji: '🥺', label: '외로워요' },
+      ];
+      return (
+        <div className="flex gap-2 overflow-x-auto px-1 pb-1 chat-scroll" role="group" aria-label="감정 빠른 선택">
+          {emotions.map((e) => (
+            <button
+              key={e.label}
+              type="button"
+              onClick={() => onSelect(`${e.emoji} 지금 ${e.label}`)}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white/80 hover:bg-white border border-stone-200 rounded-full text-sm text-stone-600 transition-all hover:scale-105 active:scale-95 shadow-sm"
+            >
+              <span aria-hidden="true">{e.emoji}</span>
+              <span>{e.label}</span>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // 하단 입력 영역
+    function ChatInput({ onSend, disabled }) {
+      const [text, setText] = useState('');
+      const inputRef = useRef(null);
+
+      const submit = () => {
+        const trimmed = text.trim();
+        if (!trimmed || disabled) return;
+        onSend(trimmed);
+        setText('');
+        inputRef.current && inputRef.current.focus();
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          submit();
+        }
+      };
+
+      const handleEmotion = (txt) => setText((prev) => (prev ? prev + ' ' + txt : txt));
+
+      return (
+        <div className="bg-white/80 backdrop-blur-md border-t border-stone-200/70 px-3 sm:px-4 pt-3 pb-3 sm:pb-4 rounded-b-3xl space-y-2.5">
+          <EmotionBar onSelect={handleEmotion} />
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="편안하게 마음을 들려주세요..."
+              aria-label="메시지 입력"
+              className="flex-1 resize-none max-h-28 px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-transparent leading-relaxed chat-scroll"
+            />
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={!text.trim() || disabled}
+              onClick={submit}
+              aria-label="전송"
+              className="flex-shrink-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🤖 OpenAI 응답 로직 — 서버의 /api/chat 호출
+    //   API 키는 서버(server.js)에서만 사용하며 여기서는 노출되지 않습니다.
+    // ========================================
+    const API_BASE_URL = window.location.origin + '/api';
+
+    // 화면의 메시지 목록을 OpenAI chat 형식(role/content)으로 변환
+    function toChatMessages(messages) {
+      return messages.map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      }));
+    }
+
+    // 서버에 대화 맥락 전체를 보내고 상담사 응답 한 문장을 받아옴
+    async function fetchCounselorReply(messages) {
+      const res = await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: toChatMessages(messages) }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data || !data.success) {
+        const msg = (data && data.message) || '응답을 가져오지 못했어요.';
+        throw new Error(msg);
+      }
+      return data.data.reply;
+    }
+
+    function nowTime() {
+      return new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ========================================
+    // 📄 Page Component — 채팅 화면
+    // ========================================
+    function CounselingChat() {
+      const [messages, setMessages] = useState([
+        {
+          id: 1,
+          sender: 'counselor',
+          text: '안녕하세요, 만나서 반가워요. 저는 당신의 이야기를 들어줄 상담사 김다온이에요. 🌿\n오늘 이곳에서는 어떤 말이든 편하게 꺼내셔도 괜찮아요. 지금 마음은 어떠신가요?',
+          time: nowTime(),
+        },
+      ]);
+      const [isTyping, setIsTyping] = useState(false);
+      const scrollRef = useRef(null);
+      const timersRef = useRef([]);
+
+      // 새 메시지/타이핑 변화 시 자동 스크롤
+      useEffect(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      }, [messages, isTyping]);
+
+      // 언마운트 시 타이머 정리
+      useEffect(() => {
+        return () => timersRef.current.forEach(clearTimeout);
+      }, []);
+
+      const handleSend = useCallback((text) => {
+        const userMsg = {
+          id: Date.now(),
+          sender: 'user',
+          text,
+          time: nowTime(),
+        };
+
+        // 사용자 메시지를 먼저 추가하고, 그 시점의 전체 대화 맥락을 서버로 전송
+        setMessages((prev) => {
+          const next = [...prev, userMsg];
+
+          setIsTyping(true);
+          fetchCounselorReply(next)
+            .then((reply) => {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: Date.now() + 1,
+                  sender: 'counselor',
+                  text: reply,
+                  time: nowTime(),
+                },
+              ]);
+            })
+            .catch((err) => {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: Date.now() + 1,
+                  sender: 'counselor',
+                  text: '죄송해요, 지금 답변을 전해드리기 어려운 상황이에요. 잠시 후 다시 말씀해 주시겠어요? 🌿',
+                  time: nowTime(),
+                },
+              ]);
+              console.error(err);
+            })
+            .finally(() => setIsTyping(false));
+
+          return next;
+        });
+      }, []);
+
+      return (
+        <div className="w-full max-w-2xl mx-auto h-[100dvh] sm:h-[90vh] sm:my-[5vh] flex flex-col bg-white/40 backdrop-blur-sm sm:rounded-3xl shadow-xl overflow-hidden border border-white/60">
+          <ChatHeader />
+
+          <main
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto chat-scroll px-3 sm:px-5 py-5 space-y-4"
+            aria-label="대화 내용"
+          >
+            {/* 날짜 구분선 */}
+            <div className="flex justify-center">
+              <span className="text-[11px] text-stone-400 bg-white/60 px-3 py-1 rounded-full">
+                오늘
+              </span>
+            </div>
+
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
+
+            {isTyping && <TypingIndicator />}
+          </main>
+
+          <ChatInput onSend={handleSend} disabled={isTyping} />
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+    function App() {
+      return (
+        <div className="min-h-[100dvh] w-full">
+          <CounselingChat />
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

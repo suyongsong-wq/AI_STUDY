@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오늘의 조언 받기</title>
+
+  <!-- CDN: Tailwind, React, ReactDOM, Babel -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 부드러운 배경 그라데이션과 카드 등장 애니메이션 (Tailwind로 표현하기 어려운 부분만 작성) */
+    body {
+      background: linear-gradient(160deg, #f0f4ff 0%, #fdf2f8 100%);
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up {
+      animation: fadeInUp 0.35s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks 가져오기
+    // ========================================
+    const { useState } = React;
+
+    // ========================================
+    // 설정값
+    // ========================================
+    // 인증 키가 필요 없는 무료 공개 API (Advice Slip)
+    // 호출하면 { slip: { id, advice } } 형태의 JSON을 돌려줍니다.
+    const ADVICE_API_URL = "https://api.adviceslip.com/advice";
+
+    // ========================================
+    // 🎨 Design System Components (순수 표현용, 비즈니스 로직 없음)
+    // ========================================
+
+    // 버튼 컴포넌트
+    function Button({ children, onClick, disabled, className = "" }) {
+      return (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          className={
+            "w-full rounded-2xl px-6 py-4 text-base font-semibold text-white " +
+            "bg-indigo-500 shadow-lg shadow-indigo-200 transition-all duration-200 " +
+            "hover:bg-indigo-600 hover:shadow-indigo-300 active:scale-[0.98] " +
+            "disabled:cursor-not-allowed disabled:bg-indigo-300 disabled:shadow-none " +
+            className
+          }
+        >
+          {children}
+        </button>
+      );
+    }
+
+    // 카드 컴포넌트 (그림자 + 둥근 모서리 + 여백)
+    function Card({ children, className = "" }) {
+      return (
+        <div
+          className={
+            "rounded-3xl bg-white/80 p-7 shadow-xl shadow-slate-200/60 " +
+            "backdrop-blur-sm ring-1 ring-slate-100 " +
+            className
+          }
+        >
+          {children}
+        </div>
+      );
+    }
+
+    // 작은 로딩 스피너
+    function Spinner() {
+      return (
+        <span
+          className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
+          aria-hidden="true"
+        />
+      );
+    }
+
+    // ========================================
+    // 📄 Page Component — 핵심 로직이 모두 여기에 있습니다
+    //   흐름: [버튼 클릭] → fetch 호출 → 상태(loading/error/advice) 갱신 → 화면 렌더링
+    // ========================================
+    function AdvicePage() {
+      // 1) 상태 3종 세트: 결과 / 로딩중 / 에러
+      const [advice, setAdvice] = useState("");   // 받아온 조언 텍스트
+      const [loading, setLoading] = useState(false); // 호출 중 여부
+      const [error, setError] = useState("");      // 에러 메시지
+
+      // 2) API 호출 함수
+      const fetchAdvice = async () => {
+        setLoading(true); // 호출 시작 → 로딩 켜기
+        setError("");      // 이전 에러 초기화
+
+        try {
+          // 캐시를 피하려고 타임스탬프를 쿼리로 붙입니다 (매번 새 조언을 받기 위함)
+          const res = await fetch(`${ADVICE_API_URL}?t=${Date.now()}`);
+
+          // 응답이 정상(200번대)이 아니면 에러로 처리
+          if (!res.ok) {
+            throw new Error("서버 응답이 올바르지 않습니다.");
+          }
+
+          // JSON 파싱 후 원하는 값만 꺼내기
+          const data = await res.json();
+          setAdvice(data.slip.advice); // 성공 → 결과 상태에 저장
+        } catch (e) {
+          // 네트워크 오류 등 → 사용자 친화적 메시지
+          setError("조언을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        } finally {
+          setLoading(false); // 성공이든 실패든 로딩 끄기
+        }
+      };
+
+      // 3) 렌더링: 상태에 따라 화면이 달라집니다
+      return (
+        <main className="flex min-h-screen items-center justify-center p-5">
+          <div className="w-full max-w-md space-y-6">
+
+            {/* 헤더 */}
+            <header className="text-center">
+              <h1 className="text-3xl font-bold tracking-tight text-slate-800">
+                오늘의 조언 💡
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                버튼을 누르면 무작위 조언 한 줄을 받아옵니다.
+              </p>
+            </header>
+
+            {/* 결과 영역 */}
+            <Card>
+              {error ? (
+                // (A) 에러 상태
+                <div className="flex flex-col items-center gap-3 py-6 text-center animate-fade-in-up">
+                  <span className="text-3xl">😢</span>
+                  <p className="text-sm font-medium text-rose-500">{error}</p>
+                </div>
+              ) : advice ? (
+                // (B) 성공 상태 — 받아온 조언 표시
+                <blockquote className="animate-fade-in-up py-2 text-center">
+                  <p className="text-xl font-semibold leading-relaxed text-slate-800">
+                    “{advice}”
+                  </p>
+                </blockquote>
+              ) : (
+                // (C) 초기 상태 — 아직 아무것도 안 받은 경우
+                <div className="py-8 text-center text-slate-400">
+                  <p className="text-sm">아직 받은 조언이 없어요.</p>
+                  <p className="text-sm">아래 버튼을 눌러 보세요!</p>
+                </div>
+              )}
+            </Card>
+
+            {/* 버튼 — 로딩 중에는 비활성화 + 스피너 */}
+            <Button onClick={fetchAdvice} disabled={loading}>
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Spinner />
+                  불러오는 중...
+                </span>
+              ) : advice || error ? (
+                "다시 받기"
+              ) : (
+                "조언 받기"
+              )}
+            </Button>
+
+            <footer className="text-center text-xs text-slate-400">
+              데이터 출처: Advice Slip API (인증 키 불필요)
+            </footer>
+          </div>
+        </main>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+    function App() {
+      return <AdvicePage />;
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

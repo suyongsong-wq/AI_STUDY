@@ -1,0 +1,116 @@
+============================================================
+[ai_4week_quest] 냉장고 재료 기반 레시피 제작 Skill — 작업 대화 정리
+작성일: 2026-06-18
+도구: Claude Code (Opus 4.8)
+============================================================
+
+■ 퀘스트 목표
+  1) 냉장고 재료를 "재료당 1개의 JSON 파일"로 관리 (ingredients/*.json)
+  2) 그 폴더의 JSON을 "먼저 읽어" 레시피를 생성/추천하는 Skill 작성 (.claude/skills/)
+  3) /recipe 슬래시 명령어로 Skill 실행 → 레시피를 마크다운 파일로 저장
+  4) (확장) single-react-dev + single-server-specialist 에이전트로 냉장고 웹앱까지 구동
+
+------------------------------------------------------------
+■ 진행 흐름 (요약)
+------------------------------------------------------------
+
+1. 폴더 생성
+   - ai_4week_quest 안에 "[Skill] 냉장고 재료 기반 레시피 제작 스킬" 폴더 생성
+     (처음에 파일로 만들었다가 → 폴더로 다시 생성)
+
+2. 샘플 재료 JSON 작성 (재료 1개 = 파일 1개)
+   - egg / kimchi / green-onion / ramen / tofu / rice (6종)
+   - 형식: { "name", "quantity", "category" }
+
+3. 스킬 예시 3종을 먼저 만들어 비교 → 사용자가 선택
+   - recipe-jachi   : 🍳 자취생 모드 (1인분·15분·원팬)
+   - recipe-health  : 🥗 건강식 모드 (1인분·500kcal·저염저당)
+   - recipe-feast   : 🍲 푸짐한 한상 모드 (2~3인분·메인+사이드)
+   => 사용자 선택: "푸짐 모드"
+
+4. 스킬 정식 설치 + /recipe 첫 실행
+   - .claude/skills/recipe/SKILL.md 에 설치 (레포 루트 + 퀘스트 폴더 양쪽)
+   - ingredients/ 6종 전부 읽기 → "김치 라면 전골 한상" 생성
+   - recipes/ 폴더에 마크다운 저장 성공
+   - ★ 스킬 1단계에 "ingredients/ 폴더의 모든 .json 파일을 먼저 읽는다" 지시 명시 확인
+
+5. 웹앱 구동 (두 에이전트 협업)
+   - 레시피 생성 방식: "고정 룰 기반(API 키 불필요, 오프라인)" 선택
+   - single-server-specialist → server.js (권한 제한으로 막혀 → 직접 작성)
+   - single-react-dev        → index.html (동일하게 직접 작성)
+   - server.js API:
+       GET    /api/ingredients      재료 목록 읽기
+       POST   /api/ingredients      재료 추가 (= JSON 파일 생성)
+       DELETE /api/ingredients/:file 재료 삭제 (= JSON 파일 삭제)
+       POST   /api/recipe           고정 룰 레시피 생성 + recipes/ 저장
+   - express 설치 후 PORT=3100 구동, 4개 API 전부 정상 동작 검증
+     (재료 추가 6→7, 삭제 7→6 까지 확인)
+
+6. 좀비 프로세스 수사 (포트 충돌 해결)
+   - 3100 EADDRINUSE 발생 → 이전 세션의 미종료 node server.js가 점유
+   - 정체 추적: 3000=ai_4week_study/todo, 3200=ai_4week_study/memo (옛 세션 잔존)
+   - 원인: 실습 서버를 Ctrl+C 없이 터미널만 닫아 백그라운드에 남은 것
+   - 좀비 2마리 정리 → 포트엔 레시피 서버(3100)만 남김
+
+7. 스킬 고도화
+   (a) 미슐랭 양식 모드 추가
+       - 처음엔 별도 /recipe-michelin 으로 만듦
+   (b) "모드 전환" 요청 → A형(인자로 모드 선택)으로 통합
+       - /recipe            → 기본
+       - /recipe 미슐랭/양식 → 파인다이닝 양식 코스
+       - /recipe 건강식      → 다이어트
+       - /recipe 자취        → 15분 초간단
+       - recipe-michelin 단독 명령어는 제거(흡수), 예시는 skill-examples/에 보존
+   (c) "그냥 /recipe면 랜덤 모드" 요청 반영
+       - 인자 없으면 4개 모드 중 무작위 선택, 직전 모드는 회피
+   (d) 칼로리 + 음식 일러스트(SVG, 오프라인) 기능 추가
+       - 각 요리 예상 kcal + 한 끼 총합 표기
+       - recipes/images/<요리>.svg 벡터 일러스트 생성 후 md 상단에 삽입
+
+8. 냉장고 보강
+   - 한국 재료 10종 추가 (코드 수정 없이 파일만 생성):
+     고추장·된장·다진마늘·양파·애호박·콩나물·시금치·멸치·구운김·스팸
+   - 총 16종
+
+9. 랜덤 /recipe 실행 (16종 기준)
+   - 🎲 → 건강식 모드 당첨 → "두부 채소 덮밥 한 그릇" (총 약 470kcal)
+   - SVG 일러스트 + 코스별 칼로리 포함, recipes/ 저장
+   - SVG를 PNG로 렌더해 시각 확인
+
+10. 제출물 정리
+   - 실행 스크린샷: 스킬 결과(건강식 모드 렌더)를 PNG로 생성
+   - 본 대화 정리 TXT 작성
+
+------------------------------------------------------------
+■ 최종 폴더 구조
+------------------------------------------------------------
+[Skill] 냉장고 재료 기반 레시피 제작 스킬/
+├── .claude/skills/recipe/SKILL.md      ← 멀티 모드 라우터 스킬 (제출 핵심)
+├── ingredients/                        ← 재료 1개 = JSON 파일 1개 (총 16종)
+│   ├── egg.json, kimchi.json, tofu.json, rice.json, ramen.json,
+│   ├── green-onion.json, gochujang.json, doenjang.json, garlic.json,
+│   ├── onion.json, zucchini.json, bean-sprouts.json, spinach.json,
+│   ├── anchovy.json, gim.json, spam.json
+├── recipes/                            ← 스킬이 저장한 레시피 마크다운
+│   ├── 레시피-건강-두부채소덮밥.md
+│   ├── 레시피-코스-두부김치코스.md
+│   ├── 레시피-두부김치전골.md
+│   ├── 레시피-김치볶음밥-한상.md
+│   ├── 레시피-김치 라면 전골.md
+│   ├── 레시피-김치라면전골-한상.md
+│   └── images/  (두부채소덮밥.svg, 두부김치코스.svg)
+├── skill-examples/                     ← 모드별 스킬 원본 보관
+│   ├── recipe-feast / recipe-health / recipe-jachi
+│   ├── recipe-michelin / recipe-multimode
+├── server.js / index.html / package.json   ← 냉장고 웹앱 (고정 룰)
+└── [Skill] …실행화면.png                ← 스킬 실행 스크린샷
+
+------------------------------------------------------------
+■ 핵심 설계 포인트
+------------------------------------------------------------
+- 재료 1개 = 파일 1개 → 추가는 파일 생성, 삭제는 파일 삭제. 코드 수정 0.
+- 스킬은 항상 "ingredients/ 폴더의 모든 JSON을 먼저 읽고" 시작.
+- 한 개의 /recipe 명령으로 4개 모드(푸짐/미슐랭/건강식/자취) 처리, 인자 없으면 랜덤.
+- 레시피는 마크다운으로 recipes/에 저장, 칼로리 + SVG 일러스트 포함.
+- 다음 퀘스트에서 이 JSON 데이터를 DB로 이전 예정.
+============================================================

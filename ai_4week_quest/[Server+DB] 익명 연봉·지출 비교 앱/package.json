@@ -1,0 +1,14 @@
+{
+  "name": "anon-salary-compare-app",
+  "version": "1.0.0",
+  "description": "Supabase PostgreSQL에 익명으로 연봉/지출을 저장하고 평균·분포·내 위치(상위 %)를 비교하는 앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

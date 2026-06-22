@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>인사말 API 데모</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #1a1a2e;
+    }
+    .card {
+      background: #ffffff;
+      width: 100%;
+      max-width: 420px;
+      margin: 24px;
+      padding: 40px 32px;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+      text-align: center;
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 8px;
+      color: #2d2d44;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 28px;
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.2s ease;
+    }
+    button:hover {
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 28px;
+      min-height: 90px;
+      padding: 20px;
+      border-radius: 12px;
+      background: #f4f5fb;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+    }
+    .result .greeting {
+      font-size: 20px;
+      font-weight: 700;
+      color: #5a4dab;
+    }
+    .result .time {
+      font-size: 15px;
+      color: #555;
+      font-variant-numeric: tabular-nums;
+    }
+    .result .placeholder {
+      font-size: 14px;
+      color: #aaa;
+    }
+    .result.error .greeting {
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>인사말 API 데모</h1>
+    <p class="subtitle">버튼을 누르면 서버가 현재 시간과 인사말을 알려줍니다.</p>
+    <button id="greetBtn">서버에 인사 요청하기</button>
+    <div class="result" id="result">
+      <span class="placeholder">아직 요청하지 않았습니다.</span>
+    </div>
+  </div>
+
+  <script src="/client.js"></script>
+</body>
+</html>

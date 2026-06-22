@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚖️ 실시간 밸런스 게임</title>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel은 최신(7.26.x)에 text/babel 변환 버그가 있어 안정 버전으로 고정 -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
+    .card-shadow { box-shadow: 0 10px 30px -12px rgba(30,41,59,.25); }
+    /* 투표 직후 살짝 통통 튀는 느낌 */
+    @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.06)} 100%{transform:scale(1)} }
+    .pop { animation: pop .35s ease; }
+    /* 퍼센티지 바가 부드럽게 차오르도록 */
+    .bar-fill { transition: width .6s cubic-bezier(.22,1,.36,1); }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-sky-50 to-rose-50 min-h-screen">
+  <div id="root">
+    <div style="text-align:center;padding:60px;color:#94a3b8;font-size:15px">⏳ 화면을 불러오는 중입니다...</div>
+  </div>
+
+  <!-- CDN 로드 실패/JS 오류를 흰 화면 대신 눈에 보이게 표시 -->
+  <script>
+    window.addEventListener('error', function (e) {
+      var root = document.getElementById('root');
+      if (root) {
+        root.innerHTML = '<div style="max-width:600px;margin:40px auto;padding:24px;border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;font-size:14px;line-height:1.6">' +
+          '<b>⚠️ 화면을 그리는 중 오류가 발생했습니다.</b><br>' +
+          (e.message || e.type) + '<br><br>' +
+          '<span style="color:#7f1d1d">CDN(인터넷)에서 React/Tailwind를 못 불러왔을 수 있어요. 광고차단 확장프로그램을 끄거나, 다른 브라우저(크롬)로 열어보세요.</span></div>';
+      }
+    });
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ===== API 헬퍼: 서버와 통신 (same-origin) =====
+    async function api(url, options) {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || '요청에 실패했습니다.');
+      return json.data;
+    }
+
+    // ===== 1인 1표: 내가 어떤 질문에 무엇을 골랐는지 브라우저에 기억 (창의성 요소) =====
+    // 서버/DB 변경 없이 localStorage로 중복 투표를 막습니다. (질문 id → 'A'|'B')
+    const VOTE_KEY = 'balance-game-my-votes';
+    function loadMyVotes() {
+      try { return JSON.parse(localStorage.getItem(VOTE_KEY)) || {}; } catch (_) { return {}; }
+    }
+    function saveMyVote(id, choice) {
+      const v = loadMyVotes();
+      v[id] = choice;
+      localStorage.setItem(VOTE_KEY, JSON.stringify(v));
+    }
+
+    // 투표 결과 비율에 따른 한마디 (창의성 요소)
+    function verdict(q) {
+      if (q.total === 0) return { text: '아직 아무도 투표 안 했어요. 첫 표를 던져보세요!', cls: 'text-slate-400' };
+      const gap = Math.abs(q.percentA - q.percentB);
+      if (gap <= 6)  return { text: '🔥 초접전! 막상막하예요', cls: 'text-rose-500 font-bold' };
+      if (gap >= 60) return { text: '😮 압도적인 한쪽 우세!', cls: 'text-indigo-600 font-semibold' };
+      return { text: '⚖️ 의견이 갈리네요', cls: 'text-slate-500' };
+    }
+
+    function Toast({ message }) {
+      if (!message) return null;
+      return (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-rose-500 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium">
+          {message}
+        </div>
+      );
+    }
+
+    // ===== 질문 등록 폼 (A vs B) =====
+    function QuestionForm({ onAdd }) {
+      const [optionA, setOptionA] = useState('');
+      const [optionB, setOptionB] = useState('');
+      const [busy, setBusy] = useState(false);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        if (!optionA.trim() || !optionB.trim() || busy) return;
+        setBusy(true);
+        await onAdd(optionA.trim(), optionB.trim());
+        setOptionA('');
+        setOptionB('');
+        setBusy(false);
+      };
+
+      return (
+        <form onSubmit={submit} className="bg-white rounded-2xl card-shadow border border-white p-5 mb-6">
+          <h2 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">➕ 밸런스 게임 질문 만들기</h2>
+          <div className="flex items-stretch gap-2">
+            <input
+              value={optionA}
+              onChange={(e) => setOptionA(e.target.value)}
+              placeholder="선택지 A"
+              className="flex-1 px-3 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/40 focus:ring-2 focus:ring-indigo-300 focus:outline-none text-sm"
+            />
+            <span className="self-center text-sm font-extrabold text-slate-400 shrink-0">VS</span>
+            <input
+              value={optionB}
+              onChange={(e) => setOptionB(e.target.value)}
+              placeholder="선택지 B"
+              className="flex-1 px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50/40 focus:ring-2 focus:ring-rose-300 focus:outline-none text-sm"
+            />
+          </div>
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-[11px] text-slate-400">예) "월급 500 + 주7일 출근" vs "월급 300 + 주4일 출근"</span>
+            <button
+              type="submit"
+              disabled={busy}
+              className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-semibold text-sm transition"
+            >
+              {busy ? '등록 중...' : '질문 등록'}
+            </button>
+          </div>
+        </form>
+      );
+    }
+
+    // ===== 한쪽 선택지 (버튼 + 퍼센티지 바) =====
+    function Side({ side, label, votes, percent, isWinner, onVote, justVoted, disabled, picked }) {
+      const isA = side === 'A';
+      const base = isA ? 'indigo' : 'rose';
+      // 승자는 진하게, 패자는 옅게
+      const fill = isWinner ? `bg-${base}-500` : `bg-${base}-300`;
+      return (
+        <button
+          onClick={onVote}
+          disabled={disabled}
+          className={`relative w-full text-left rounded-2xl border-2 overflow-hidden transition group
+            ${picked ? (isA ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-rose-500 ring-2 ring-rose-200')
+                     : (isA ? 'border-indigo-200' : 'border-rose-200')}
+            ${disabled ? 'cursor-default' : (isA ? 'hover:border-indigo-400' : 'hover:border-rose-400')}
+            ${justVoted ? 'pop' : ''}`}
+        >
+          {/* 퍼센티지 바 (배경에서 차오름) */}
+          <div className={`absolute inset-y-0 left-0 bar-fill ${fill} opacity-25`} style={{ width: `${percent}%` }} />
+          <div className="relative px-4 py-3.5 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className={`inline-block text-[11px] font-extrabold px-1.5 py-0.5 rounded mr-1.5 ${isA ? 'bg-indigo-100 text-indigo-700' : 'bg-rose-100 text-rose-700'}`}>{side}</span>
+              <span className="text-[15px] font-semibold text-slate-700 whitespace-pre-wrap break-words">{label}</span>
+              {picked && <span className="ml-1.5 text-[11px] font-bold text-emerald-600">✓ 내 선택</span>}
+            </div>
+            <div className="text-right shrink-0">
+              <div className={`text-xl font-extrabold tabular-nums ${isWinner ? (isA ? 'text-indigo-600' : 'text-rose-600') : 'text-slate-400'}`}>{percent}%</div>
+              <div className="text-[11px] text-slate-400 tabular-nums">{votes}표</div>
+            </div>
+          </div>
+        </button>
+      );
+    }
+
+    // ===== 밸런스 게임 카드 =====
+    function GameCard({ q, onVote, onDelete, votedChoice }) {
+      const [justVoted, setJustVoted] = useState('');        // 방금 누른 쪽 'A'|'B'
+      const [mine, setMine] = useState(votedChoice || null); // 내가 고른 쪽 (localStorage 기억)
+      const hasVoted = mine != null;                          // 이미 투표했으면 다시 못 누름
+
+      const vote = (choice) => {
+        if (hasVoted) return; // 1인 1표: 이미 투표한 질문은 무시
+        setJustVoted(choice);
+        setMine(choice);
+        setTimeout(() => setJustVoted(''), 350);
+        onVote(q.id, choice);
+      };
+
+      const winner = q.total === 0 ? null : (q.percentA === q.percentB ? 'tie' : (q.percentA > q.percentB ? 'A' : 'B'));
+      const v = verdict(q);
+
+      // 내가 고른 쪽이 다수파인지 소수파인지 (창의성 요소)
+      let myBadge = null;
+      if (mine && q.total > 0) {
+        const myPct = mine === 'A' ? q.percentA : q.percentB;
+        myBadge = myPct >= 50
+          ? { t: `👍 당신은 다수파 (${myPct}%)`, c: 'bg-emerald-100 text-emerald-700' }
+          : { t: `🦄 당신은 소수파 (${myPct}%)`, c: 'bg-violet-100 text-violet-700' };
+      }
+
+      return (
+        <article className="bg-white rounded-2xl card-shadow border border-slate-100 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400">총 {q.total}명 참여</span>
+            <button onClick={() => onDelete(q.id)} className="text-xs text-slate-300 hover:text-rose-500" title="질문 삭제">✕</button>
+          </div>
+
+          <div className="space-y-2">
+            <Side side="A" label={q.optionA} votes={q.votesA} percent={q.percentA}
+                  isWinner={winner === 'A'} justVoted={justVoted === 'A'} onVote={() => vote('A')}
+                  disabled={hasVoted} picked={mine === 'A'} />
+            <div className="flex items-center justify-center">
+              <span className="text-xs font-extrabold text-slate-400 bg-slate-100 px-2.5 py-0.5 rounded-full -my-0.5 z-10">VS</span>
+            </div>
+            <Side side="B" label={q.optionB} votes={q.votesB} percent={q.percentB}
+                  isWinner={winner === 'B'} justVoted={justVoted === 'B'} onVote={() => vote('B')}
+                  disabled={hasVoted} picked={mine === 'B'} />
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <span className={`text-xs ${v.cls}`}>{v.text}</span>
+            {myBadge && <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${myBadge.c}`}>{myBadge.t}</span>}
+          </div>
+        </article>
+      );
+    }
+
+    // ===== 🏆 가장 뜨거운 질문 (참여 TOP) — 인기 랭킹 (창의성 요소) =====
+    function HotQuestion({ questions }) {
+      const top = [...questions].filter(q => q.total > 0).sort((a, b) => b.total - a.total)[0];
+      if (!top) return null;
+      return (
+        <div className="bg-gradient-to-br from-amber-50 to-orange-100 rounded-2xl border border-amber-200 p-4 mb-6">
+          <h2 className="text-sm font-bold text-amber-700 mb-1 flex items-center gap-1.5">🔥 지금 가장 뜨거운 질문</h2>
+          <p className="text-sm text-slate-600">
+            <b className="text-indigo-600">{top.optionA}</b>
+            <span className="text-slate-400"> vs </span>
+            <b className="text-rose-600">{top.optionB}</b>
+            <span className="text-amber-700 font-bold"> · {top.total}명 참여</span>
+          </p>
+        </div>
+      );
+    }
+
+    // ===== 메인 앱 =====
+    function App() {
+      const [questions, setQuestions] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState('');
+      const [myVotes, setMyVotes] = useState(loadMyVotes); // 질문 id → 내가 고른 'A'|'B'
+
+      const showError = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+      const load = () =>
+        api('/api/questions').then(setQuestions).catch(e => showError(e.message)).finally(() => setLoading(false));
+
+      useEffect(() => { load(); }, []);
+
+      // 다른 사람의 투표도 반영되도록 8초마다 자동 새로고침 ("여러 명이 동시에" 경험)
+      useEffect(() => {
+        const t = setInterval(() => { api('/api/questions').then(setQuestions).catch(() => {}); }, 8000);
+        return () => clearInterval(t);
+      }, []);
+
+      const addQuestion = async (optionA, optionB) => {
+        try {
+          const created = await api('/api/questions', { method: 'POST', body: JSON.stringify({ optionA, optionB }) });
+          setQuestions(prev => [created, ...prev]);
+        } catch (e) { showError(e.message); }
+      };
+
+      const votePost = async (id, choice) => {
+        if (myVotes[id]) return; // 1인 1표 (브라우저 기준)
+        try {
+          // 서버가 갱신된 집계를 돌려주면 해당 질문만 교체 → 퍼센티지 바가 즉시 갱신
+          const updated = await api(`/api/questions/${id}/vote`, { method: 'POST', body: JSON.stringify({ choice }) });
+          setQuestions(prev => prev.map(q => q.id === id ? { ...updated } : q));
+          saveMyVote(id, choice);                          // 브라우저에 기억
+          setMyVotes(prev => ({ ...prev, [id]: choice }));
+        } catch (e) { showError(e.message); }
+      };
+
+      const deleteQuestion = async (id) => {
+        try {
+          await api(`/api/questions/${id}`, { method: 'DELETE' });
+          setQuestions(prev => prev.filter(q => q.id !== id));
+        } catch (e) { showError(e.message); }
+      };
+
+      const totalVotes = questions.reduce((s, q) => s + q.total, 0);
+
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <Toast message={toast} />
+
+          <header className="text-center mb-6">
+            <h1 className="text-3xl font-extrabold text-slate-800">⚖️ 실시간 밸런스 게임</h1>
+            <p className="text-slate-500 mt-2 text-sm">
+              둘 중 하나를 골라 투표하면 실시간으로 비율이 바뀝니다. 여러 명이 동시에 투표해보세요! (Supabase DB 연동)
+            </p>
+            <p className="text-xs text-slate-400 mt-1">지금까지 모인 표: <b className="text-slate-600 tabular-nums">{totalVotes}</b>표</p>
+          </header>
+
+          <QuestionForm onAdd={addQuestion} />
+
+          <HotQuestion questions={questions} />
+
+          {loading ? (
+            <p className="text-slate-400 text-sm text-center py-10">불러오는 중...</p>
+          ) : questions.length === 0 ? (
+            <div className="text-center py-14 text-slate-300">
+              <div className="text-4xl mb-2">🤔</div>
+              <p className="text-sm">아직 질문이 없어요. 첫 번째 밸런스 게임을 만들어보세요!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {questions.map(q => (
+                <GameCard key={q.id} q={q} onVote={votePost} onDelete={deleteQuestion} votedChoice={myVotes[q.id]} />
+              ))}
+            </div>
+          )}
+
+          <footer className="text-center text-xs text-slate-300 mt-10">
+            하버스쿨 AI 교육 · 4주차 [Server+DB] 퀘스트
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

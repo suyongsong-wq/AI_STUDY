@@ -1,0 +1,14 @@
+{
+  "name": "fridge-ai-recipe-app",
+  "version": "1.0.0",
+  "description": "냉장고 재료 기반 AI(Gemini) 레시피 생성앱 — Supabase PostgreSQL 연동",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

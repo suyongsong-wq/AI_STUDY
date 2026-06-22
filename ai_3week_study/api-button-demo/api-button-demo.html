@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API 호출 데모</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.7s linear infinite; }
+  </style>
+</head>
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    function Button({ variant = "primary", size = "md", disabled, onClick, children, className = "" }) {
+      const base = "inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]";
+      const variants = {
+        primary: "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm",
+        secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400",
+        ghost: "bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-slate-300",
+      };
+      const sizes = { sm: "px-3 py-1.5 text-sm", md: "px-5 py-2.5 text-sm", lg: "px-6 py-3 text-base" };
+      return (
+        <button onClick={onClick} disabled={disabled}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = "" }) {
+      return (
+        <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Spinner({ className = "" }) {
+      return (
+        <svg className={`spinner ${className}`} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    function Avatar({ name }) {
+      const initial = (name || "?").trim().charAt(0).toUpperCase();
+      return (
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-lg shrink-0">
+          {initial}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 📡 API 설정
+    // ========================================
+
+    const API_BASE_URL = "https://jsonplaceholder.typicode.com";
+
+    async function fetchRandom(path, max) {
+      const id = Math.floor(Math.random() * max) + 1;
+      const res = await fetch(`${API_BASE_URL}/${path}/${id}`);
+      if (!res.ok) throw new Error(`요청 실패 (HTTP ${res.status})`);
+      return res.json();
+    }
+
+    // ========================================
+    // 📄 결과 표시 컴포넌트
+    // ========================================
+
+    function PostResult({ data }) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+              게시글 #{data.id}
+            </span>
+            <span className="text-xs text-slate-400">작성자 ID: {data.userId}</span>
+          </div>
+          <h3 className="text-lg font-bold text-slate-800 capitalize leading-snug">{data.title}</h3>
+          <p className="text-slate-600 leading-relaxed whitespace-pre-line">{data.body}</p>
+        </div>
+      );
+    }
+
+    function UserResult({ data }) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={data.name} />
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">{data.name}</h3>
+              <p className="text-sm text-slate-500">@{data.username}</p>
+            </div>
+          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <Field label="이메일" value={data.email} />
+            <Field label="전화번호" value={data.phone} />
+            <Field label="웹사이트" value={data.website} />
+            <Field label="회사" value={data.company?.name} />
+            <Field label="도시" value={data.address?.city} className="sm:col-span-2" />
+          </dl>
+        </div>
+      );
+    }
+
+    function Field({ label, value, className = "" }) {
+      return (
+        <div className={`bg-slate-50 rounded-lg px-3 py-2 ${className}`}>
+          <dt className="text-xs font-medium text-slate-400">{label}</dt>
+          <dd className="text-slate-700 break-all">{value || "-"}</dd>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App 컴포넌트
+    // ========================================
+
+    function App() {
+      const [type, setType] = useState(null);   // "post" | "user"
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+
+      const callApi = useCallback(async (kind) => {
+        setLoading(true);
+        setError(null);
+        setType(kind);
+        try {
+          const result = kind === "post"
+            ? await fetchRandom("posts", 100)
+            : await fetchRandom("users", 10);
+          setData(result);
+        } catch (err) {
+          setError(err.message || "알 수 없는 오류가 발생했습니다.");
+          setData(null);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      return (
+        <div className="min-h-screen flex items-start justify-center px-4 py-10 sm:py-16">
+          <div className="w-full max-w-2xl space-y-6">
+
+            {/* 헤더 */}
+            <header className="text-center space-y-2">
+              <h1 className="text-3xl font-extrabold text-slate-800">API 호출 데모</h1>
+              <p className="text-slate-500 text-sm">
+                버튼을 누르면 공개 API에서 랜덤 데이터를 가져옵니다.
+              </p>
+            </header>
+
+            {/* 버튼 영역 */}
+            <Card className="p-6">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button onClick={() => callApi("post")} disabled={loading} size="lg" className="flex-1">
+                  {loading && type === "post" ? <Spinner /> : "📝"}
+                  랜덤 게시글 가져오기
+                </Button>
+                <Button onClick={() => callApi("user")} disabled={loading} size="lg" variant="secondary" className="flex-1">
+                  {loading && type === "user" ? <Spinner /> : "👤"}
+                  랜덤 사용자 가져오기
+                </Button>
+              </div>
+            </Card>
+
+            {/* 결과 영역 */}
+            <Card className="p-6 min-h-[180px]">
+              {loading && (
+                <div className="flex flex-col items-center justify-center py-10 text-indigo-600 gap-3">
+                  <Spinner className="w-8 h-8" />
+                  <p className="text-sm text-slate-500">데이터를 불러오는 중...</p>
+                </div>
+              )}
+
+              {!loading && error && (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-3" role="alert">
+                  <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-2xl">⚠️</div>
+                  <p className="font-semibold text-red-600">오류가 발생했습니다</p>
+                  <p className="text-sm text-slate-500">{error}</p>
+                  <Button variant="ghost" size="sm" onClick={() => callApi(type)}>다시 시도</Button>
+                </div>
+              )}
+
+              {!loading && !error && data && (
+                type === "post" ? <PostResult data={data} /> : <UserResult data={data} />
+              )}
+
+              {!loading && !error && !data && (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-2 text-slate-400">
+                  <div className="text-4xl">📦</div>
+                  <p className="text-sm">위 버튼을 눌러 데이터를 불러오세요.</p>
+                </div>
+              )}
+            </Card>
+
+            <p className="text-center text-xs text-slate-400">
+              데이터 출처: JSONPlaceholder ({API_BASE_URL})
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

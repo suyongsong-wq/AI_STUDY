@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧊 냉장고 털어 한상차림 🍲</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; background: #fff7ed; }
+    .font-cute { font-family: 'Gaegu', cursive; }
+    .markdown-body h1 { font-size: 1.5rem; font-weight: 700; margin: 0.5rem 0; }
+    .markdown-body h2 { font-size: 1.15rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #c2410c; }
+    .markdown-body ol { list-style: decimal; padding-left: 1.4rem; margin: 0.3rem 0; }
+    .markdown-body ul { list-style: disc; padding-left: 1.4rem; margin: 0.3rem 0; }
+    .markdown-body li { margin: 0.2rem 0; line-height: 1.6; }
+    .markdown-body blockquote { color: #92400e; border-left: 3px solid #fdba74; padding-left: 0.8rem; margin: 0.5rem 0; }
+    .markdown-body hr { margin: 1rem 0; border-color: #fed7aa; }
+    @keyframes bubble { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+    .bubble { animation: bubble 0.8s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const CAT_BADGE = {
+      '냉장': 'bg-sky-100 text-sky-700',
+      '냉동': 'bg-indigo-100 text-indigo-700',
+      '실온': 'bg-amber-100 text-amber-700',
+    };
+
+    function App() {
+      const [ingredients, setIngredients] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [form, setForm] = useState({ name: '', quantity: '', category: '냉장' });
+      const [recipe, setRecipe] = useState(null);
+      const [cooking, setCooking] = useState(false);
+
+      async function loadIngredients() {
+        setLoading(true); setError(null);
+        try {
+          const res = await fetch('/api/ingredients');
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message || '불러오기 실패');
+          setIngredients(data.ingredients);
+        } catch (e) {
+          setError('재료를 불러오지 못했어요. 서버(server.js)가 켜져 있는지 확인하세요.');
+        } finally { setLoading(false); }
+      }
+
+      useEffect(() => { loadIngredients(); }, []);
+
+      async function addIngredient(e) {
+        e.preventDefault();
+        if (!form.name.trim()) return;
+        await fetch('/api/ingredients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+        setForm({ name: '', quantity: '', category: '냉장' });
+        loadIngredients();
+      }
+
+      async function removeIngredient(file) {
+        await fetch('/api/ingredients/' + encodeURIComponent(file), { method: 'DELETE' });
+        loadIngredients();
+      }
+
+      async function makeRecipe() {
+        setCooking(true); setRecipe(null);
+        try {
+          const res = await fetch('/api/recipe', { method: 'POST' });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message);
+          setRecipe(data);
+        } catch (e) {
+          setError('레시피 생성에 실패했어요.');
+        } finally { setCooking(false); }
+      }
+
+      return (
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          <header className="text-center mb-8">
+            <h1 className="font-cute text-4xl md:text-5xl font-bold text-orange-600">🧊 냉장고 털어 한상차림 🍲</h1>
+            <p className="text-orange-400 mt-2 font-cute text-xl">냉장고에 있는 재료로 푸짐한 한 상을 차려보자, 돼지가 되는 날 🐷</p>
+          </header>
+
+          {/* 재료 추가 */}
+          <section className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5 mb-6">
+            <h2 className="font-bold text-lg text-orange-700 mb-1">🧺 재료 채우기</h2>
+            <p className="text-xs text-orange-400 mb-3">재료 1개 = 파일 1개 (ingredients/ 폴더에 JSON으로 저장돼요)</p>
+            <form onSubmit={addIngredient} className="flex flex-wrap gap-2">
+              <input className="flex-1 min-w-[120px] border border-orange-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="재료 이름 (예: 양파)" value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <input className="w-28 border border-orange-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="분량" value={form.quantity}
+                onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+              <select className="border border-orange-200 rounded-lg px-3 py-2 bg-white"
+                value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <option>냉장</option><option>냉동</option><option>실온</option>
+              </select>
+              <button className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg">+ 추가</button>
+            </form>
+          </section>
+
+          {/* 냉장고 목록 */}
+          <section className="mb-6">
+            <h2 className="font-bold text-lg text-orange-700 mb-3">🧊 내 냉장고 ({ingredients.length})</h2>
+            {error && <div className="bg-red-50 text-red-600 rounded-lg p-3 mb-3 text-sm">{error}</div>}
+            {loading ? (
+              <div className="text-orange-400">불러오는 중…</div>
+            ) : ingredients.length === 0 ? (
+              <div className="text-center text-orange-300 py-8">🫙 냉장고가 비었어요. 위에서 재료를 추가하세요.</div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {ingredients.map((ing) => (
+                  <div key={ing.file} className="bg-white rounded-xl border border-orange-100 p-3 shadow-sm relative">
+                    <button onClick={() => removeIngredient(ing.file)}
+                      className="absolute top-2 right-2 text-orange-300 hover:text-red-500" title="삭제">🗑️</button>
+                    <div className="font-bold text-gray-800">{ing.name}</div>
+                    <div className="text-sm text-gray-500">{ing.quantity}</div>
+                    <span className={"inline-block mt-2 text-xs px-2 py-0.5 rounded-full " + (CAT_BADGE[ing.category] || 'bg-gray-100 text-gray-600')}>{ing.category}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 레시피 생성 */}
+          <section className="text-center mb-6">
+            <button onClick={makeRecipe} disabled={cooking || ingredients.length === 0}
+              className="font-cute text-2xl bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold px-8 py-4 rounded-2xl shadow-lg disabled:opacity-40">
+              {cooking ? '보글보글 끓이는 중…' : '🍲 푸짐한 한상 차리기'}
+            </button>
+            {cooking && <div className="mt-3 text-2xl"><span className="bubble inline-block">🫧</span></div>}
+          </section>
+
+          {/* 레시피 결과 */}
+          {recipe && (
+            <section className="bg-white rounded-2xl shadow-md border border-orange-100 p-6">
+              <div className="bg-green-50 text-green-700 text-sm rounded-lg px-3 py-2 mb-4">✅ <b>{recipe.savedPath}</b> 에 저장됨</div>
+              <div className="markdown-body text-gray-800"
+                dangerouslySetInnerHTML={{ __html: marked.parse(recipe.markdown) }} />
+            </section>
+          )}
+
+          <footer className="text-center text-orange-300 text-xs mt-10 font-cute text-base">
+            🍳 냉장고 재료 기반 레시피 스킬 · 푸짐한 한상 모드
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

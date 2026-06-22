@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>하버스쿨 AI 교육 · 할 일 관리 (React)</title>
+
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 + ReactDOM + Babel(JSX 변환) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body { background:#0f172a; }
+    /* 부드러운 등장 애니메이션 */
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    .fade-in { animation: fadeIn .15s ease; }
+    /* 커스텀 스크롤바 */
+    ::-webkit-scrollbar { width:8px; }
+    ::-webkit-scrollbar-thumb { background:#334155; border-radius:8px; }
+  </style>
+</head>
+<body class="text-slate-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ── 공통 컴포넌트 ───────────────────────────────────────
+    // 필터 탭
+    function FilterTab({ label, count, active, onClick }) {
+      return (
+        <button
+          onClick={onClick}
+          className={
+            "px-4 py-1.5 rounded-full text-sm transition border " +
+            (active
+              ? "bg-sky-400 text-slate-900 border-sky-400 font-bold"
+              : "bg-transparent text-slate-400 border-slate-700 hover:border-slate-500")
+          }
+        >
+          {label}
+          <span className={"ml-1.5 " + (active ? "text-slate-700" : "text-slate-500")}>{count}</span>
+        </button>
+      );
+    }
+
+    // 할 일 한 줄
+    function TodoItem({ todo, onToggle, onDelete }) {
+      return (
+        <li className="fade-in flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+          {/* 체크 동그라미 */}
+          <button
+            onClick={() => onToggle(todo.id)}
+            className={
+              "w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center text-sm transition " +
+              (todo.done
+                ? "bg-green-500 border-green-500 text-slate-900"
+                : "border-slate-600 hover:border-sky-400")
+            }
+          >
+            {todo.done ? "✔" : ""}
+          </button>
+
+          {/* 텍스트(클릭해도 완료 토글) */}
+          <span
+            onClick={() => onToggle(todo.id)}
+            className={
+              "flex-1 break-all cursor-pointer " +
+              (todo.done ? "text-slate-500 line-through" : "")
+            }
+          >
+            {todo.text}
+          </span>
+
+          {/* 삭제 */}
+          <button
+            onClick={() => onDelete(todo.id)}
+            className="text-slate-500 hover:text-red-500 text-lg leading-none"
+            title="삭제"
+          >
+            ✕
+          </button>
+        </li>
+      );
+    }
+
+    // ── 메인 앱 ─────────────────────────────────────────────
+    function App() {
+      // localStorage에서 초기값 로드 (lazy initializer)
+      const [todos, setTodos] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("todos") || "[]"); }
+        catch { return []; }
+      });
+      const [filter, setFilter] = useState("all");
+      const [input, setInput] = useState("");
+
+      // todos 바뀔 때마다 자동 저장
+      useEffect(() => {
+        localStorage.setItem("todos", JSON.stringify(todos));
+      }, [todos]);
+
+      // 추가
+      function addTodo() {
+        const text = input.trim();
+        if (!text) return;
+        setTodos([...todos, { id: Date.now(), text, done: false }]);
+        setInput("");
+      }
+      // 완료 토글
+      function toggleTodo(id) {
+        setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+      }
+      // 삭제
+      function deleteTodo(id) {
+        setTodos(todos.filter(t => t.id !== id));
+      }
+      // 완료 항목 비우기
+      function clearDone() {
+        setTodos(todos.filter(t => !t.done));
+      }
+
+      // 개수 계산
+      const activeCount = todos.filter(t => !t.done).length;
+      const doneCount = todos.length - activeCount;
+
+      // 필터 적용
+      const filtered = todos.filter(t =>
+        filter === "all" ? true : filter === "done" ? t.done : !t.done
+      );
+
+      // 빈 목록 안내 문구
+      const emptyMsg =
+        filter === "done" ? "완료한 항목이 없습니다."
+        : filter === "active" ? "진행중인 항목이 없습니다 🎉"
+        : "할 일이 없습니다. 첫 항목을 추가해보세요!";
+
+      return (
+        <div className="max-w-lg mx-auto px-5 pb-16">
+          {/* 헤더 */}
+          <header className="text-center pt-12 pb-6">
+            <h1 className="text-3xl font-bold">✅ 할 일 관리</h1>
+            <p className="text-slate-400 mt-1">하버스쿨 AI 교육 · 4주차</p>
+          </header>
+
+          {/* 입력 줄 */}
+          <div className="flex gap-2.5 mb-5">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // 한글(IME) 조합 중에 발생하는 중복 Enter 무시 → 항목 2개 추가 방지
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) addTodo();
+              }}
+              placeholder="할 일을 입력하고 Enter"
+              maxLength={100}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-sky-400"
+            />
+            <button
+              onClick={addTodo}
+              className="bg-sky-400 text-slate-900 font-bold px-5 rounded-xl hover:opacity-90"
+            >
+              추가
+            </button>
+          </div>
+
+          {/* 필터 */}
+          <div className="flex gap-2 mb-4">
+            <FilterTab label="전체" count={todos.length} active={filter === "all"} onClick={() => setFilter("all")} />
+            <FilterTab label="진행중" count={activeCount} active={filter === "active"} onClick={() => setFilter("active")} />
+            <FilterTab label="완료" count={doneCount} active={filter === "done"} onClick={() => setFilter("done")} />
+          </div>
+
+          {/* 목록 */}
+          {filtered.length === 0 ? (
+            <p className="text-slate-500 text-center py-10">{emptyMsg}</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {filtered.map(t => (
+                <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} />
+              ))}
+            </ul>
+          )}
+
+          {/* 하단 요약 */}
+          <div className="flex justify-between items-center mt-4 text-sm text-slate-400">
+            <span>전체 {todos.length}개 · 진행중 {activeCount}개</span>
+            {doneCount > 0 && (
+              <button onClick={clearDone} className="hover:text-red-500">완료 항목 비우기</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

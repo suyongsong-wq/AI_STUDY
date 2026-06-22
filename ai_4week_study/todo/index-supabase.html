@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>하버스쿨 AI 교육 · 할 일 관리 (Supabase)</title>
+
+  <!-- Tailwind / React / Babel -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Supabase 클라이언트 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { background:#0f172a; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    .fade-in { animation: fadeIn .15s ease; }
+    ::-webkit-scrollbar { width:8px; }
+    ::-webkit-scrollbar-thumb { background:#334155; border-radius:8px; }
+  </style>
+</head>
+<body class="text-slate-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ======================================================
+    //  ⚙️ Supabase 연결 설정
+    //  - SUPABASE_URL: 프로젝트 URL (그대로 두세요)
+    //  - SUPABASE_ANON_KEY: 대시보드 Settings → API 의 anon public 키를 붙여넣기
+    // ======================================================
+    const SUPABASE_URL = "https://qchnvibjwiyxpdcezbn.supabase.co";
+    const SUPABASE_ANON_KEY = "여기에_anon_public_키를_붙여넣으세요";
+
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ── 공통 컴포넌트 ───────────────────────────────────────
+    function FilterTab({ label, count, active, onClick }) {
+      return (
+        <button
+          onClick={onClick}
+          className={
+            "px-4 py-1.5 rounded-full text-sm transition border " +
+            (active
+              ? "bg-sky-400 text-slate-900 border-sky-400 font-bold"
+              : "bg-transparent text-slate-400 border-slate-700 hover:border-slate-500")
+          }
+        >
+          {label}
+          <span className={"ml-1.5 " + (active ? "text-slate-700" : "text-slate-500")}>{count}</span>
+        </button>
+      );
+    }
+
+    function TodoItem({ todo, onToggle, onDelete }) {
+      return (
+        <li className="fade-in flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+          <button
+            onClick={() => onToggle(todo)}
+            className={
+              "w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center text-sm transition " +
+              (todo.done ? "bg-green-500 border-green-500 text-slate-900" : "border-slate-600 hover:border-sky-400")
+            }
+          >
+            {todo.done ? "✔" : ""}
+          </button>
+          <span
+            onClick={() => onToggle(todo)}
+            className={"flex-1 break-all cursor-pointer " + (todo.done ? "text-slate-500 line-through" : "")}
+          >
+            {todo.text}
+          </span>
+          <button onClick={() => onDelete(todo.id)} className="text-slate-500 hover:text-red-500 text-lg leading-none" title="삭제">✕</button>
+        </li>
+      );
+    }
+
+    // ── 메인 앱 ─────────────────────────────────────────────
+    function App() {
+      const [todos, setTodos] = useState([]);
+      const [filter, setFilter] = useState("all");
+      const [input, setInput] = useState("");
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
+
+      // 목록 불러오기 (Supabase에서 조회)
+      async function load() {
+        const { data, error } = await db.from("todos").select("*").order("created_at", { ascending: true });
+        if (error) { setError(error.message); }
+        else { setTodos(data); setError(""); }
+        setLoading(false);
+      }
+
+      useEffect(() => { load(); }, []);
+
+      // 추가 → DB에 insert 후 목록 갱신
+      async function addTodo() {
+        const text = input.trim();
+        if (!text) return;
+        setInput("");
+        const { error } = await db.from("todos").insert({ text });
+        if (error) return setError(error.message);
+        load();
+      }
+
+      // 완료 토글 → DB update
+      async function toggleTodo(todo) {
+        const { error } = await db.from("todos").update({ done: !todo.done }).eq("id", todo.id);
+        if (error) return setError(error.message);
+        load();
+      }
+
+      // 삭제 → DB delete
+      async function deleteTodo(id) {
+        const { error } = await db.from("todos").delete().eq("id", id);
+        if (error) return setError(error.message);
+        load();
+      }
+
+      // 완료 항목 비우기
+      async function clearDone() {
+        const { error } = await db.from("todos").delete().eq("done", true);
+        if (error) return setError(error.message);
+        load();
+      }
+
+      const activeCount = todos.filter(t => !t.done).length;
+      const doneCount = todos.length - activeCount;
+      const filtered = todos.filter(t => filter === "all" ? true : filter === "done" ? t.done : !t.done);
+      const emptyMsg =
+        filter === "done" ? "완료한 항목이 없습니다."
+        : filter === "active" ? "진행중인 항목이 없습니다 🎉"
+        : "할 일이 없습니다. 첫 항목을 추가해보세요!";
+
+      return (
+        <div className="max-w-lg mx-auto px-5 pb-16">
+          <header className="text-center pt-12 pb-6">
+            <h1 className="text-3xl font-bold">✅ 할 일 관리</h1>
+            <p className="text-slate-400 mt-1">하버스쿨 AI 교육 · 4주차 · Supabase 연동</p>
+          </header>
+
+          {/* 에러 안내 (키 미설정 / 테이블 없음 등) */}
+          {error && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-300 rounded-xl px-4 py-3 text-sm">
+              ⚠️ {error}
+              <div className="text-slate-400 mt-1">anon 키 입력 / 테이블 생성 / RLS 정책을 확인하세요.</div>
+            </div>
+          )}
+
+          <div className="flex gap-2.5 mb-5">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // 한글(IME) 조합 중 중복 Enter 무시
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) addTodo();
+              }}
+              placeholder="할 일을 입력하고 Enter"
+              maxLength={100}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-sky-400"
+            />
+            <button onClick={addTodo} className="bg-sky-400 text-slate-900 font-bold px-5 rounded-xl hover:opacity-90">추가</button>
+          </div>
+
+          <div className="flex gap-2 mb-4">
+            <FilterTab label="전체" count={todos.length} active={filter === "all"} onClick={() => setFilter("all")} />
+            <FilterTab label="진행중" count={activeCount} active={filter === "active"} onClick={() => setFilter("active")} />
+            <FilterTab label="완료" count={doneCount} active={filter === "done"} onClick={() => setFilter("done")} />
+          </div>
+
+          {loading ? (
+            <p className="text-slate-500 text-center py-10">불러오는 중…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-slate-500 text-center py-10">{emptyMsg}</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {filtered.map(t => <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} />)}
+            </ul>
+          )}
+
+          <div className="flex justify-between items-center mt-4 text-sm text-slate-400">
+            <span>전체 {todos.length}개 · 진행중 {activeCount}개</span>
+            {doneCount > 0 && <button onClick={clearDone} className="hover:text-red-500">완료 항목 비우기</button>}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

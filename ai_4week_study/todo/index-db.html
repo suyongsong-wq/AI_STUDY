@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>하버스쿨 AI 교육 · 할 일 관리 (DB 연동)</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body { background:#0f172a; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    .fade-in { animation: fadeIn .15s ease; }
+    ::-webkit-scrollbar { width:8px; }
+    ::-webkit-scrollbar-thumb { background:#334155; border-radius:8px; }
+  </style>
+</head>
+<body class="text-slate-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // 우리 서버의 API 호출 (서버가 다시 Supabase DB에 저장)
+    const api = {
+      list:   ()        => fetch("/api/todos").then(r => r.json()),
+      add:    (text)    => fetch("/api/todos", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ text }) }),
+      toggle: (id,done) => fetch("/api/todos/" + id, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ done }) }),
+      remove: (id)      => fetch("/api/todos/" + id, { method:"DELETE" }),
+      clear:  ()        => fetch("/api/todos", { method:"DELETE" }),
+    };
+
+    function FilterTab({ label, count, active, onClick }) {
+      return (
+        <button onClick={onClick}
+          className={"px-4 py-1.5 rounded-full text-sm transition border " +
+            (active ? "bg-sky-400 text-slate-900 border-sky-400 font-bold"
+                    : "bg-transparent text-slate-400 border-slate-700 hover:border-slate-500")}>
+          {label}<span className={"ml-1.5 " + (active ? "text-slate-700" : "text-slate-500")}>{count}</span>
+        </button>
+      );
+    }
+
+    function TodoItem({ todo, onToggle, onDelete }) {
+      return (
+        <li className="fade-in flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+          <button onClick={() => onToggle(todo)}
+            className={"w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center text-sm transition " +
+              (todo.done ? "bg-green-500 border-green-500 text-slate-900" : "border-slate-600 hover:border-sky-400")}>
+            {todo.done ? "✔" : ""}
+          </button>
+          <span onClick={() => onToggle(todo)}
+            className={"flex-1 break-all cursor-pointer " + (todo.done ? "text-slate-500 line-through" : "")}>
+            {todo.text}
+          </span>
+          <button onClick={() => onDelete(todo.id)} className="text-slate-500 hover:text-red-500 text-lg leading-none" title="삭제">✕</button>
+        </li>
+      );
+    }
+
+    function App() {
+      const [todos, setTodos] = useState([]);
+      const [filter, setFilter] = useState("all");
+      const [input, setInput] = useState("");
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
+
+      async function load() {
+        try {
+          const data = await api.list();
+          if (Array.isArray(data)) { setTodos(data); setError(""); }
+          else setError(data.error || "불러오기 실패");
+        } catch (e) { setError("서버에 연결할 수 없습니다. node server.js 실행 여부를 확인하세요."); }
+        setLoading(false);
+      }
+      useEffect(() => { load(); }, []);
+
+      async function addTodo() {
+        const text = input.trim();
+        if (!text) return;
+        setInput("");
+        await api.add(text);
+        load();
+      }
+      async function toggleTodo(todo) { await api.toggle(todo.id, !todo.done); load(); }
+      async function deleteTodo(id)   { await api.remove(id); load(); }
+      async function clearDone()      { await api.clear(); load(); }
+
+      const activeCount = todos.filter(t => !t.done).length;
+      const doneCount = todos.length - activeCount;
+      const filtered = todos.filter(t => filter === "all" ? true : filter === "done" ? t.done : !t.done);
+      const emptyMsg = filter === "done" ? "완료한 항목이 없습니다."
+        : filter === "active" ? "진행중인 항목이 없습니다 🎉"
+        : "할 일이 없습니다. 첫 항목을 추가해보세요!";
+
+      return (
+        <div className="max-w-lg mx-auto px-5 pb-16">
+          <header className="text-center pt-12 pb-6">
+            <h1 className="text-3xl font-bold">✅ 할 일 관리</h1>
+            <p className="text-slate-400 mt-1">하버스쿨 AI 교육 · 4주차 · Supabase DB 연동</p>
+          </header>
+
+          {error && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-300 rounded-xl px-4 py-3 text-sm">⚠️ {error}</div>
+          )}
+
+          <div className="flex gap-2.5 mb-5">
+            <input type="text" value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addTodo(); }}
+              placeholder="할 일을 입력하고 Enter" maxLength={100}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-sky-400" />
+            <button onClick={addTodo} className="bg-sky-400 text-slate-900 font-bold px-5 rounded-xl hover:opacity-90">추가</button>
+          </div>
+
+          <div className="flex gap-2 mb-4">
+            <FilterTab label="전체" count={todos.length} active={filter === "all"} onClick={() => setFilter("all")} />
+            <FilterTab label="진행중" count={activeCount} active={filter === "active"} onClick={() => setFilter("active")} />
+            <FilterTab label="완료" count={doneCount} active={filter === "done"} onClick={() => setFilter("done")} />
+          </div>
+
+          {loading ? (
+            <p className="text-slate-500 text-center py-10">불러오는 중…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-slate-500 text-center py-10">{emptyMsg}</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {filtered.map(t => <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} />)}
+            </ul>
+          )}
+
+          <div className="flex justify-between items-center mt-4 text-sm text-slate-400">
+            <span>전체 {todos.length}개 · 진행중 {activeCount}개</span>
+            {doneCount > 0 && <button onClick={clearDone} className="hover:text-red-500">완료 항목 비우기</button>}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

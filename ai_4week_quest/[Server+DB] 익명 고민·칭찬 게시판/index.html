@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🗣️ 익명 고민·칭찬 게시판</title>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel은 최신(7.26.x)에 text/babel 변환 버그가 있어 안정 버전으로 고정 -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; }
+    .card-shadow { box-shadow: 0 10px 30px -12px rgba(30,41,59,.25); }
+    /* 리액션 누를 때 살짝 통통 튀는 느낌 */
+    @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.35)} 100%{transform:scale(1)} }
+    .pop { animation: pop .35s ease; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-violet-50 via-sky-50 to-rose-50 min-h-screen">
+  <div id="root">
+    <div style="text-align:center;padding:60px;color:#94a3b8;font-size:15px">⏳ 화면을 불러오는 중입니다...</div>
+  </div>
+
+  <!-- CDN 로드 실패/JS 오류를 흰 화면 대신 눈에 보이게 표시 -->
+  <script>
+    window.addEventListener('error', function (e) {
+      var root = document.getElementById('root');
+      if (root) {
+        root.innerHTML = '<div style="max-width:600px;margin:40px auto;padding:24px;border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;font-size:14px;line-height:1.6">' +
+          '<b>⚠️ 화면을 그리는 중 오류가 발생했습니다.</b><br>' +
+          (e.message || e.type) + '<br><br>' +
+          '<span style="color:#7f1d1d">CDN(인터넷)에서 React/Tailwind를 못 불러왔을 수 있어요. 광고차단 확장프로그램을 끄거나, 다른 브라우저(크롬)로 열어보세요.</span></div>';
+      }
+    });
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ===== 카테고리 정의 (글을 분류하는 태그) =====
+    // 서버는 정확히 '고민' | '칭찬' | '응원' 문자열만 허용합니다.
+    const CATEGORIES = [
+      { key: '고민', emoji: '💭', chip: 'bg-sky-100 text-sky-800 border-sky-200',        accent: 'border-l-sky-400' },
+      { key: '칭찬', emoji: '👏', chip: 'bg-green-100 text-green-800 border-green-200',    accent: 'border-l-green-400' },
+      { key: '응원', emoji: '💪', chip: 'bg-orange-100 text-orange-800 border-orange-200', accent: 'border-l-orange-400' },
+    ];
+    const catStyle = (cat) => (CATEGORIES.find(c => c.key === cat) || CATEGORIES[0]);
+
+    // ===== 감정 리액션 정의 (글마다 여러 감정으로 반응) =====
+    // type은 서버 컬럼명과 일치해야 함: likes / hug / cheer
+    const REACTIONS = [
+      { type: 'likes', emoji: '❤️', label: '공감', cls: 'bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-200' },
+      { type: 'hug',   emoji: '🤗', label: '위로', cls: 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200' },
+      { type: 'cheer', emoji: '🔥', label: '응원', cls: 'bg-violet-50 hover:bg-violet-100 text-violet-600 border-violet-200' },
+    ];
+
+    // ===== 작성 시각 상대 표시 ("방금 전", "5분 전"...) =====
+    function timeAgo(ms) {
+      const diff = Date.now() - ms;
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return '방금 전';
+      if (min < 60) return `${min}분 전`;
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return `${hr}시간 전`;
+      const day = Math.floor(hr / 24);
+      if (day < 7) return `${day}일 전`;
+      const d = new Date(ms);
+      return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    }
+
+    // ===== API 헬퍼: 서버와 통신 (same-origin) =====
+    async function api(url, options) {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || '요청에 실패했습니다.');
+      return json.data;
+    }
+
+    function Toast({ message }) {
+      if (!message) return null;
+      return (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-rose-500 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium">
+          {message}
+        </div>
+      );
+    }
+
+    // ===== 글 작성 폼 (익명) =====
+    function PostForm({ onAdd }) {
+      const [category, setCategory] = useState('고민');
+      const [content, setContent] = useState('');
+      const [busy, setBusy] = useState(false);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        if (!content.trim() || busy) return;
+        setBusy(true);
+        await onAdd(category, content.trim());
+        setContent('');
+        setBusy(false);
+      };
+
+      return (
+        <form onSubmit={submit} className="bg-white rounded-2xl card-shadow border border-white p-5 mb-6">
+          <h2 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">✍️ 익명으로 글쓰기</h2>
+
+          {/* 카테고리 선택 (탭처럼) */}
+          <div className="flex gap-2 mb-3">
+            {CATEGORIES.map(c => (
+              <button
+                type="button"
+                key={c.key}
+                onClick={() => setCategory(c.key)}
+                className={`flex-1 py-2 rounded-xl border text-sm font-semibold transition ${
+                  category === c.key
+                    ? `${c.chip} ring-2 ring-offset-1 ring-slate-300`
+                    : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {c.emoji} {c.key}
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="여기에 솔직한 마음을 익명으로 남겨보세요. 아무도 누가 썼는지 몰라요 🤫"
+            rows="3"
+            className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-violet-300 focus:outline-none text-sm resize-y"
+          />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[11px] text-slate-400">작성자 정보는 저장되지 않아요.</span>
+            <button
+              type="submit"
+              disabled={busy}
+              className="px-5 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white font-semibold text-sm transition"
+            >
+              {busy ? '올리는 중...' : '📮 올리기'}
+            </button>
+          </div>
+        </form>
+      );
+    }
+
+    // ===== 🏆 베스트 게시글 (명예의 전당) — 공감(❤️) TOP 3 =====
+    const MEDALS = ['🥇', '🥈', '🥉'];
+    function HallOfFame({ posts, onJump }) {
+      const top = [...posts]
+        .filter(p => p.likes > 0)
+        .sort((a, b) => b.likes - a.likes)
+        .slice(0, 3);
+      if (top.length === 0) return null;
+      return (
+        <div className="bg-gradient-to-br from-amber-50 to-yellow-100 rounded-2xl border border-amber-200 p-4 mb-6">
+          <h2 className="text-sm font-bold text-amber-700 mb-2 flex items-center gap-1.5">🏆 이번 주 베스트 (공감순 TOP 3)</h2>
+          <div className="space-y-1.5">
+            {top.map((p, i) => {
+              const s = catStyle(p.category);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onJump(p.id)}
+                  className="w-full text-left flex items-center gap-2 bg-white/70 hover:bg-white rounded-lg px-3 py-1.5 transition"
+                >
+                  <span className="text-lg shrink-0">{MEDALS[i]}</span>
+                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${s.chip}`}>{s.emoji}</span>
+                  <span className="text-sm text-slate-600 truncate flex-1">{p.content}</span>
+                  <span className="text-sm font-bold text-rose-500 shrink-0 tabular-nums">❤️ {p.likes}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ===== 답글(댓글) 영역 — 펼쳤을 때만 서버에서 불러옴 =====
+    function CommentSection({ postId, onCountChange }) {
+      const [comments, setComments] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [text, setText] = useState('');
+      const [busy, setBusy] = useState(false);
+
+      useEffect(() => {
+        api(`/api/posts/${postId}/comments`)
+          .then(setComments)
+          .catch(() => {})
+          .finally(() => setLoading(false));
+      }, [postId]);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        if (!text.trim() || busy) return;
+        setBusy(true);
+        try {
+          const created = await api(`/api/posts/${postId}/comments`, {
+            method: 'POST', body: JSON.stringify({ content: text.trim() }),
+          });
+          setComments(prev => [...prev, created]);
+          setText('');
+          onCountChange(comments.length + 1); // 카드의 답글 수 갱신
+        } catch (_) {}
+        setBusy(false);
+      };
+
+      return (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          {loading ? (
+            <p className="text-xs text-slate-400">답글 불러오는 중...</p>
+          ) : comments.length === 0 ? (
+            <p className="text-xs text-slate-400 mb-2">아직 답글이 없어요. 따뜻한 한마디를 남겨보세요 🌱</p>
+          ) : (
+            <ul className="space-y-1.5 mb-2">
+              {comments.map(c => (
+                <li key={c.id} className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5 flex justify-between gap-2">
+                  <span className="whitespace-pre-wrap">↳ {c.content}</span>
+                  <span className="text-[10px] text-slate-400 shrink-0">{timeAgo(c.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={submit} className="flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="익명 답글 달기..."
+              className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-violet-300 focus:outline-none text-sm"
+            />
+            <button type="submit" disabled={busy} className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-semibold transition">
+              등록
+            </button>
+          </form>
+        </div>
+      );
+    }
+
+    // ===== 게시글 카드 =====
+    function PostCard({ post, onReact, onDelete, highlight }) {
+      const s = catStyle(post.category);
+      const [popping, setPopping] = useState('');     // 방금 누른 리액션 type
+      const [open, setOpen] = useState(false);         // 답글 펼침 여부
+      const [count, setCount] = useState(post.commentCount);
+
+      const react = (type) => {
+        setPopping(type);
+        setTimeout(() => setPopping(''), 350);
+        onReact(post.id, type);
+      };
+
+      return (
+        <article
+          id={`post-${post.id}`}
+          className={`bg-white rounded-2xl card-shadow border border-slate-100 border-l-4 ${s.accent} p-4 transition ${highlight ? 'ring-2 ring-amber-300' : ''}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${s.chip}`}>
+              {s.emoji} {post.category}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400">{timeAgo(post.createdAt)}</span>
+              <button onClick={() => onDelete(post.id)} className="text-xs text-slate-300 hover:text-rose-500" title="삭제">✕</button>
+            </div>
+          </div>
+
+          <p className="text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+
+          {/* 감정 리액션 버튼들 — 각 버튼이 서버에서 해당 카운트를 +1 */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {REACTIONS.map(r => (
+              <button
+                key={r.type}
+                onClick={() => react(r.type)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-bold transition ${r.cls}`}
+                title={r.label}
+              >
+                <span className={popping === r.type ? 'pop inline-block' : 'inline-block'}>{r.emoji}</span>
+                {r.label} <span className="tabular-nums">{post[r.type]}</span>
+              </button>
+            ))}
+            {/* 답글 토글 */}
+            <button
+              onClick={() => setOpen(o => !o)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm font-bold transition ml-auto"
+            >
+              💬 답글 <span className="tabular-nums">{count}</span>
+            </button>
+          </div>
+
+          {open && <CommentSection postId={post.id} onCountChange={setCount} />}
+        </article>
+      );
+    }
+
+    // ===== 메인 앱 =====
+    function App() {
+      const [posts, setPosts] = useState([]);
+      const [sort, setSort] = useState('latest');   // 'latest' | 'likes'
+      const [filter, setFilter] = useState('전체');  // '전체' | '고민' | '칭찬' | '응원'
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState('');
+      const [highlight, setHighlight] = useState(null); // 베스트에서 점프한 글 강조
+
+      const showError = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+      // 정렬이 바뀌면 서버에서 그 순서로 다시 조회 (카테고리 필터는 화면단에서 처리)
+      useEffect(() => {
+        setLoading(true);
+        api(`/api/posts?sort=${sort}`)
+          .then(setPosts)
+          .catch(e => showError(e.message))
+          .finally(() => setLoading(false));
+      }, [sort]);
+
+      const addPost = async (category, content) => {
+        try {
+          await api('/api/posts', { method: 'POST', body: JSON.stringify({ category, content }) });
+          const fresh = await api(`/api/posts?sort=${sort}`);
+          setPosts(fresh);
+          setFilter(category); // 방금 쓴 글이 보이도록 해당 카테고리로 이동
+        } catch (e) { showError(e.message); }
+      };
+
+      const reactPost = async (id, type) => {
+        try {
+          // 서버가 갱신된 글을 돌려주면 해당 글만 교체
+          const updated = await api(`/api/posts/${id}/react`, { method: 'POST', body: JSON.stringify({ type }) });
+          setPosts(prev => prev.map(p => p.id === id ? { ...updated } : p));
+        } catch (e) { showError(e.message); }
+      };
+
+      const deletePost = async (id) => {
+        try {
+          await api(`/api/posts/${id}`, { method: 'DELETE' });
+          setPosts(prev => prev.filter(p => p.id !== id));
+        } catch (e) { showError(e.message); }
+      };
+
+      // 베스트 카드 클릭 시 해당 글로 스크롤 + 잠깐 강조
+      const jumpTo = (id) => {
+        if (filter !== '전체' && !posts.some(p => p.id === id && p.category === filter)) setFilter('전체');
+        setTimeout(() => {
+          const el = document.getElementById(`post-${id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setHighlight(id);
+          setTimeout(() => setHighlight(null), 1600);
+        }, 60);
+      };
+
+      const SORTS = [
+        { key: 'latest', label: '🕒 최신순' },
+        { key: 'likes',  label: '🔥 공감순' },
+      ];
+      // 카테고리 탭 필터 (전체 + 3개 카테고리), 각 탭에 개수 뱃지
+      const TABS = ['전체', ...CATEGORIES.map(c => c.key)];
+      const countOf = (key) => key === '전체' ? posts.length : posts.filter(p => p.category === key).length;
+
+      const visible = filter === '전체' ? posts : posts.filter(p => p.category === filter);
+
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <Toast message={toast} />
+
+          <header className="text-center mb-6">
+            <h1 className="text-3xl font-extrabold text-slate-800">🗣️ 익명 고민·칭찬 게시판</h1>
+            <p className="text-slate-500 mt-2 text-sm">고민도, 칭찬도, 응원도 익명으로. 마음에 드는 글엔 ❤️🤗🔥 리액션을 눌러주세요. (Supabase DB 연동)</p>
+          </header>
+
+          <PostForm onAdd={addPost} />
+
+          {/* 🏆 베스트 게시글 */}
+          <HallOfFame posts={posts} onJump={jumpTo} />
+
+          {/* 카테고리 탭 필터 */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {TABS.map(key => {
+              const c = CATEGORIES.find(x => x.key === key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition ${
+                    filter === key
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {c ? `${c.emoji} ${key}` : '전체'} <span className="opacity-70">({countOf(key)})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 정렬 토글 */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="inline-flex bg-white rounded-full p-1 border border-slate-200 shadow-sm">
+              {SORTS.map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setSort(s.key)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                    sort === s.key ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-slate-400">{visible.length}개 표시 중</span>
+          </div>
+
+          {/* 목록 */}
+          {loading ? (
+            <p className="text-slate-400 text-sm text-center py-10">불러오는 중...</p>
+          ) : visible.length === 0 ? (
+            <div className="text-center py-14 text-slate-300">
+              <div className="text-4xl mb-2">🍃</div>
+              <p className="text-sm">{filter === '전체' ? '아직 글이 없어요. 첫 번째 마음을 남겨보세요!' : `'${filter}' 글이 아직 없어요.`}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {visible.map(p => (
+                <PostCard key={p.id} post={p} onReact={reactPost} onDelete={deletePost} highlight={highlight === p.id} />
+              ))}
+            </div>
+          )}
+
+          <footer className="text-center text-xs text-slate-300 mt-10">
+            하버스쿨 AI 교육 · 4주차 [Server+DB] 퀘스트
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
