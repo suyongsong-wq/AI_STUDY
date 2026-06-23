@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Todo App · 로그인 + DB</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const TOKEN_KEY = "todo_token";
+
+    // ====== 공통 fetch 헬퍼: 토큰을 자동으로 Authorization 헤더에 붙임 ======
+    async function api(path, options = {}) {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(options.headers || {}),
+        },
+      });
+      if (res.status === 401) {
+        // 토큰 만료/무효 → 로그아웃 처리
+        localStorage.removeItem(TOKEN_KEY);
+        window.dispatchEvent(new Event("auth-expired"));
+      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.success === false) {
+        throw new Error(body.message || "요청에 실패했습니다.");
+      }
+      return body.data;
+    }
+
+    // ====== 로그인 / 회원가입 ======
+    function AuthScreen({ onAuth }) {
+      const [mode, setMode] = useState("login");
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+      const isSignup = mode === "register";
+
+      async function submit(e) {
+        e.preventDefault();
+        setError(""); setLoading(true);
+        try {
+          const path = isSignup ? "/api/auth/register" : "/api/auth/login";
+          const data = await api(path, { method: "POST", body: JSON.stringify({ email, password }) });
+          localStorage.setItem(TOKEN_KEY, data.token);
+          onAuth(data.user);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      return (
+        <div className="max-w-md mx-auto px-4 pt-20">
+          <h1 className="text-3xl font-bold text-center text-slate-800 mb-1">📝 My Todo</h1>
+          <p className="text-center text-slate-500 mb-8">로그인하면 나만의 할 일이 보여요</p>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <div className="flex bg-slate-100 rounded-lg p-1 mb-6">
+              <button onClick={() => { setMode("login"); setError(""); }}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition ${!isSignup ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>로그인</button>
+              <button onClick={() => { setMode("register"); setError(""); }}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition ${isSignup ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>회원가입</button>
+            </div>
+            <form onSubmit={submit} className="space-y-3">
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호 (6자 이상)"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              {error && <p className="text-sm text-red-500">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 transition">
+                {loading ? "처리 중..." : isSignup ? "회원가입" : "로그인"}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ====== Todo 화면 (로그인 후) ======
+    function TodoApp({ user, onLogout }) {
+      const [todos, setTodos] = useState([]);
+      const [text, setText] = useState("");
+      const [loading, setLoading] = useState(true);
+
+      async function load() {
+        setLoading(true);
+        try { setTodos(await api("/api/todos")); } catch (e) {} finally { setLoading(false); }
+      }
+      useEffect(() => { load(); }, []);
+
+      async function add(e) {
+        e.preventDefault();
+        const t = text.trim(); if (!t) return;
+        setText("");
+        const todo = await api("/api/todos", { method: "POST", body: JSON.stringify({ text: t }) });
+        setTodos((prev) => [todo, ...prev]);
+      }
+      async function toggle(todo) {
+        const updated = await api(`/api/todos/${todo.id}`, { method: "PATCH", body: JSON.stringify({ done: !todo.done }) });
+        setTodos((prev) => prev.map((x) => (x.id === todo.id ? updated : x)));
+      }
+      async function remove(id) {
+        await api(`/api/todos/${id}`, { method: "DELETE" });
+        setTodos((prev) => prev.filter((x) => x.id !== id));
+      }
+
+      const doneCount = todos.filter((t) => t.done).length;
+
+      return (
+        <div className="max-w-md mx-auto px-4 pt-12 pb-20">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">📝 My Todo</h1>
+              <p className="text-sm text-slate-500">{user.email}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {user.role === "admin" && (
+                <a href="/admin.html" className="text-sm px-3 py-2 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium transition">관리자</a>
+              )}
+              <button onClick={onLogout} className="text-sm px-3 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 transition">로그아웃</button>
+            </div>
+          </div>
+
+          <form onSubmit={add} className="flex gap-2 mb-4">
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="할 일을 입력하세요"
+              className="flex-1 px-4 py-3 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <button className="px-5 py-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition">추가</button>
+          </form>
+
+          {todos.length > 0 && <p className="text-sm text-slate-500 mb-2">완료 {doneCount} / 전체 {todos.length}</p>}
+
+          {loading ? (
+            <p className="text-center text-slate-400 py-10">불러오는 중...</p>
+          ) : todos.length === 0 ? (
+            <p className="text-center text-slate-400 py-10">아직 할 일이 없어요. 첫 할 일을 추가해보세요!</p>
+          ) : (
+            <ul className="space-y-2">
+              {todos.map((todo) => (
+                <li key={todo.id} className="flex items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm">
+                  <input type="checkbox" checked={todo.done} onChange={() => toggle(todo)} className="w-5 h-5 accent-indigo-600 cursor-pointer" />
+                  <span className={`flex-1 ${todo.done ? "line-through text-slate-400" : "text-slate-800"}`}>{todo.text}</span>
+                  <button onClick={() => remove(todo.id)} className="text-slate-300 hover:text-red-500 transition text-xl leading-none">×</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+
+    // ====== 루트 ======
+    function App() {
+      const [user, setUser] = useState(null);
+      const [ready, setReady] = useState(false);
+
+      async function restore() {
+        if (!localStorage.getItem(TOKEN_KEY)) { setReady(true); return; }
+        try { const data = await api("/api/auth/me"); setUser(data.user); }
+        catch (e) { localStorage.removeItem(TOKEN_KEY); }
+        finally { setReady(true); }
+      }
+      useEffect(() => {
+        restore();
+        const onExpire = () => setUser(null);
+        window.addEventListener("auth-expired", onExpire);
+        return () => window.removeEventListener("auth-expired", onExpire);
+      }, []);
+
+      function logout() { localStorage.removeItem(TOKEN_KEY); setUser(null); }
+
+      if (!ready) return <p className="text-center text-slate-400 pt-20">로딩 중...</p>;
+      return user ? <TodoApp user={user} onLogout={logout} /> : <AuthScreen onAuth={setUser} />;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

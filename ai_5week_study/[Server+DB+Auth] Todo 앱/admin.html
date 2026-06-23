@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>관리자 대시보드 · Todo App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const TOKEN_KEY = "todo_token";
+
+    async function api(path, options = {}) {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(options.headers || {}),
+        },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.success === false) {
+        const err = new Error(body.message || "요청에 실패했습니다.");
+        err.status = res.status;
+        throw err;
+      }
+      return body.data;
+    }
+
+    function fmtDate(ms) {
+      const d = new Date(ms);
+      return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    // 로그인 화면 (관리자용)
+    function LoginScreen({ onDone, message }) {
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState("");
+      const [loading, setLoading] = useState(false);
+
+      async function submit(e) {
+        e.preventDefault();
+        setError(""); setLoading(true);
+        try {
+          const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+          localStorage.setItem(TOKEN_KEY, data.token);
+          onDone();
+        } catch (err) { setError(err.message); } finally { setLoading(false); }
+      }
+
+      return (
+        <div className="max-w-md mx-auto px-4 pt-20">
+          <h1 className="text-3xl font-bold text-center text-slate-800 mb-1">🛠️ 관리자</h1>
+          <p className="text-center text-slate-500 mb-8">관리자 계정으로 로그인하세요</p>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            {message && <p className="text-sm text-amber-600 mb-4 text-center">{message}</p>}
+            <form onSubmit={submit} className="space-y-3">
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              {error && <p className="text-sm text-red-500">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 transition">
+                {loading ? "처리 중..." : "로그인"}
+              </button>
+            </form>
+            <a href="/index.html" className="block text-center text-sm text-slate-400 mt-4 hover:text-slate-600">← 사용자 앱으로</a>
+          </div>
+        </div>
+      );
+    }
+
+    function StatCard({ label, value, sub }) {
+      return (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <p className="text-sm text-slate-500">{label}</p>
+          <p className="text-3xl font-bold text-slate-800 mt-1">{value}</p>
+          {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+        </div>
+      );
+    }
+
+    function Dashboard({ data, onLogout }) {
+      const rate = data.todoCount ? Math.round((data.doneCount / data.todoCount) * 100) : 0;
+      return (
+        <div className="max-w-4xl mx-auto px-4 pt-10 pb-20">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">🛠️ 관리자 대시보드</h1>
+              <p className="text-sm text-slate-500">전체 사용자와 할 일 현황</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href="/index.html" className="text-sm px-3 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 transition">사용자 앱</a>
+              <button onClick={onLogout} className="text-sm px-3 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 transition">로그아웃</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <StatCard label="전체 사용자" value={data.userCount + "명"} />
+            <StatCard label="전체 할 일" value={data.todoCount + "개"} sub={`완료 ${data.doneCount}개`} />
+            <StatCard label="완료율" value={rate + "%"} sub={`${data.doneCount} / ${data.todoCount}`} />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-700">사용자별 현황</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="px-5 py-3 font-medium">이메일</th>
+                    <th className="px-5 py-3 font-medium">역할</th>
+                    <th className="px-5 py-3 font-medium">가입일</th>
+                    <th className="px-5 py-3 font-medium text-right">할 일</th>
+                    <th className="px-5 py-3 font-medium text-right">완료</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((u) => (
+                    <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="px-5 py-3 text-slate-800">{u.email}</td>
+                      <td className="px-5 py-3">
+                        <span className={`text-xs px-2 py-1 rounded-full ${u.role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"}`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-slate-500">{fmtDate(u.createdAt)}</td>
+                      <td className="px-5 py-3 text-right text-slate-700">{u.todoCount}</td>
+                      <td className="px-5 py-3 text-right text-slate-700">{u.doneCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data.users.length === 0 && <p className="text-center text-slate-400 py-10">사용자가 없습니다.</p>}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [view, setView] = useState("loading"); // loading | login | dashboard
+      const [data, setData] = useState(null);
+      const [loginMsg, setLoginMsg] = useState("");
+
+      async function loadDashboard() {
+        try {
+          const overview = await api("/api/admin/overview");
+          setData(overview);
+          setView("dashboard");
+        } catch (err) {
+          // 401: 로그인 필요 / 403: 관리자 아님
+          if (err.status === 403) {
+            localStorage.removeItem(TOKEN_KEY);
+            setLoginMsg("관리자 권한이 없는 계정입니다. 관리자로 로그인하세요.");
+          } else {
+            setLoginMsg("");
+          }
+          setView("login");
+        }
+      }
+      useEffect(() => {
+        if (!localStorage.getItem(TOKEN_KEY)) { setView("login"); return; }
+        loadDashboard();
+      }, []);
+
+      function logout() { localStorage.removeItem(TOKEN_KEY); setData(null); setLoginMsg(""); setView("login"); }
+
+      if (view === "loading") return <p className="text-center text-slate-400 pt-20">로딩 중...</p>;
+      if (view === "login") return <LoginScreen message={loginMsg} onDone={() => { setView("loading"); loadDashboard(); }} />;
+      return <Dashboard data={data} onLogout={logout} />;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

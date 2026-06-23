@@ -1,0 +1,16 @@
+{
+  "name": "todo-app-backend",
+  "version": "1.0.0",
+  "description": "5주차 Todo App + 관리자 대시보드 — Express 백엔드 (JWT 인증 + 할일 CRUD + 관리자 API)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0"
+  }
+}
