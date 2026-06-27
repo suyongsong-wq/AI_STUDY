@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>내 가계부를 아는 AI 분석가</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel 최신(7.26.x)은 text/babel 변환 버그가 있어 안정 버전 7.23.5로 고정 -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-bubble { animation: fadeInUp 0.25s ease-out; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.2; }
+      40% { opacity: 1; }
+    }
+    .typing-dot { animation: blink 1.2s infinite both; }
+    .scroll-area::-webkit-scrollbar { width: 6px; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    body { -webkit-font-smoothing: antialiased; }
+    .tabular { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks
+    // ========================================
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    const API_BASE_URL = '/api';
+
+    // ========================================
+    // Utils
+    // ========================================
+    const won = (n) => {
+      if (n == null || isNaN(n)) return '0원';
+      return Math.round(n).toLocaleString('ko-KR') + '원';
+    };
+    const CHART_COLORS = [
+      '#6366f1', '#22c55e', '#f97316', '#ec4899', '#0ea5e9',
+      '#eab308', '#8b5cf6', '#14b8a6', '#ef4444', '#64748b',
+    ];
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+    function Button({ children, variant = 'primary', size = 'md', disabled, onClick, type = 'button', className = '' }) {
+      const variants = {
+        primary: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm',
+        secondary: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300',
+        ghost: 'bg-transparent hover:bg-slate-100 text-slate-600',
+      };
+      const sizes = { sm: 'px-3 py-1.5 text-sm', md: 'px-4 py-2 text-sm', lg: 'px-5 py-2.5 text-base' };
+      return (
+        <button
+          type={type}
+          onClick={onClick}
+          disabled={disabled}
+          className={`inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return (
+        <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Chip({ children, onClick, disabled }) {
+      return (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          className="px-3.5 py-1.5 rounded-full text-sm bg-white border border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Spinner({ className = 'w-5 h-5' }) {
+      return (
+        <svg className={`animate-spin text-indigo-500 ${className}`} viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+      );
+    }
+
+    // ========================================
+    // 🧩 Chart Components (Chart.js wrappers)
+    // ========================================
+    function DoughnutChart({ data }) {
+      const ref = useRef(null);
+      const instance = useRef(null);
+      useEffect(() => {
+        if (!ref.current || !data || data.length === 0) return;
+        const ctx = ref.current.getContext('2d');
+        instance.current = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: data.map((d) => d.category),
+            datasets: [{
+              data: data.map((d) => d.total ?? d.amount),
+              backgroundColor: data.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+              borderColor: '#fff',
+              borderWidth: 2,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '62%',
+            plugins: {
+              legend: { position: 'right', labels: { boxWidth: 12, padding: 12, font: { size: 12 } } },
+              tooltip: { callbacks: { label: (c) => ` ${c.label}: ${won(c.raw)}` } },
+            },
+          },
+        });
+        return () => instance.current && instance.current.destroy();
+      }, [data]);
+      return <div className="relative h-64"><canvas ref={ref} /></div>;
+    }
+
+    function WeekdayBarChart({ data }) {
+      const ref = useRef(null);
+      const instance = useRef(null);
+      useEffect(() => {
+        if (!ref.current || !data || data.length === 0) return;
+        const ctx = ref.current.getContext('2d');
+        instance.current = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: data.map((d) => d.weekday),
+            datasets: [{
+              label: '지출',
+              data: data.map((d) => d.total ?? d.amount),
+              backgroundColor: '#6366f1',
+              borderRadius: 6,
+              maxBarThickness: 40,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => ` ${won(c.raw)}` } },
+            },
+            scales: {
+              y: { ticks: { callback: (v) => (v >= 10000 ? v / 10000 + '만' : v), font: { size: 11 } }, grid: { color: '#f1f5f9' } },
+              x: { grid: { display: false }, ticks: { font: { size: 12 } } },
+            },
+          },
+        });
+        return () => instance.current && instance.current.destroy();
+      }, [data]);
+      return <div className="relative h-64"><canvas ref={ref} /></div>;
+    }
+
+    // ========================================
+    // 🧩 Dashboard Pieces
+    // ========================================
+    function SummaryCard({ label, value, sub, accent }) {
+      return (
+        <Card className="p-5">
+          <p className="text-sm text-slate-500">{label}</p>
+          <p className={`mt-1.5 text-2xl font-bold tabular ${accent || 'text-slate-800'}`}>{value}</p>
+          {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+        </Card>
+      );
+    }
+
+    function SkeletonBlock({ className = '' }) {
+      return <div className={`animate-pulse bg-slate-200 rounded-xl ${className}`} />;
+    }
+
+    function Dashboard({ stats, loading, error, onRetry }) {
+      if (loading) {
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} className="h-24" />)}
+            </div>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <SkeletonBlock className="h-80" />
+              <SkeletonBlock className="h-80" />
+            </div>
+          </div>
+        );
+      }
+      if (error) {
+        return (
+          <Card className="p-8 text-center">
+            <p className="text-3xl mb-2">⚠️</p>
+            <p className="text-slate-700 font-medium">분석 데이터를 불러오지 못했어요.</p>
+            <p className="text-sm text-slate-400 mt-1">{String(error)}</p>
+            <Button className="mt-4" onClick={onRetry}>다시 시도</Button>
+          </Card>
+        );
+      }
+      if (!stats) {
+        return (
+          <Card className="p-8 text-center text-slate-500">
+            <p className="text-3xl mb-2">📭</p>
+            아직 분석할 가계부 데이터가 없어요.
+          </Card>
+        );
+      }
+
+      // 서버(/api/stats)는 income / expense / total 키로 응답 → 별칭으로 매핑
+      const { income: totalIncome = 0, expense: totalExpense = 0, balance = 0, count = 0, byCategory = [], byWeekday = [], topCategory } = stats;
+
+      return (
+        <div className="space-y-6">
+          {/* 요약 */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <SummaryCard label="총수입" value={won(totalIncome)} accent="text-emerald-600" />
+            <SummaryCard label="총지출" value={won(totalExpense)} accent="text-rose-500" />
+            <SummaryCard label="잔액" value={won(balance)} accent={balance >= 0 ? 'text-indigo-600' : 'text-rose-500'} />
+            <SummaryCard label="거래 건수" value={`${count.toLocaleString('ko-KR')}건`} />
+          </div>
+
+          {/* 지출 1위 강조 */}
+          {topCategory && (
+            <Card className="p-6 bg-gradient-to-r from-indigo-600 to-violet-600 border-0 text-white">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <p className="text-indigo-100 text-sm">🏆 지출 1위 카테고리</p>
+                  <p className="text-2xl font-bold mt-1">{topCategory.category}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-extrabold tabular">{won(topCategory.total ?? topCategory.amount)}</p>
+                  {topCategory.ratio != null && (
+                    <p className="text-indigo-100 text-sm mt-0.5">전체 지출의 {Math.round(topCategory.ratio)}%</p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* 차트 2종 */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="font-semibold text-slate-700 mb-3">카테고리별 지출</h3>
+              {byCategory.length > 0
+                ? <DoughnutChart data={byCategory} />
+                : <p className="h-64 flex items-center justify-center text-slate-400 text-sm">데이터 없음</p>}
+            </Card>
+            <Card className="p-6">
+              <h3 className="font-semibold text-slate-700 mb-3">요일별 지출</h3>
+              {byWeekday.length > 0
+                ? <WeekdayBarChart data={byWeekday} />
+                : <p className="h-64 flex items-center justify-center text-slate-400 text-sm">데이터 없음</p>}
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🧩 Chat Pieces
+    // ========================================
+    const SUGGESTED = [
+      '이번 달 얼마 썼어?',
+      '카테고리별 비율 알려줘',
+      '주중 vs 주말 비교해줘',
+      '절약할 수 있는 거 추천해줘',
+      '남은 예산 얼마야?',
+    ];
+
+    function DetailView({ detail }) {
+      if (!detail) return null;
+      // 배열(테이블/리스트) 또는 객체(키-값) 모두 대응
+      if (Array.isArray(detail)) {
+        if (detail.length === 0) return null;
+        const isObjRows = typeof detail[0] === 'object' && detail[0] !== null;
+        if (isObjRows) {
+          const cols = Object.keys(detail[0]);
+          return (
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>{cols.map((c) => <th key={c} className="text-left font-medium px-3 py-2">{c}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {detail.map((row, i) => (
+                    <tr key={i} className="border-t border-slate-100">
+                      {cols.map((c) => {
+                        const v = row[c];
+                        return <td key={c} className="px-3 py-2 tabular text-slate-700">{typeof v === 'number' ? v.toLocaleString('ko-KR') : String(v)}</td>;
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        return (
+          <ul className="mt-3 space-y-1 text-sm text-slate-600 list-disc list-inside">
+            {detail.map((d, i) => <li key={i}>{String(d)}</li>)}
+          </ul>
+        );
+      }
+      if (typeof detail === 'object') {
+        const entries = Object.entries(detail);
+        // 스칼라 값은 키-값 그리드로, 중첩(배열/객체)은 아래에 재귀 렌더
+        const scalars = entries.filter(([, v]) => typeof v !== 'object' || v === null);
+        const nested = entries.filter(([, v]) => typeof v === 'object' && v !== null);
+        return (
+          <div className="mt-3 space-y-2">
+            {scalars.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {scalars.map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3 bg-slate-50 rounded-lg px-3 py-1.5 text-sm">
+                    <span className="text-slate-500">{k}</span>
+                    <span className="font-medium tabular text-slate-700">{typeof v === 'number' ? v.toLocaleString('ko-KR') : String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {nested.map(([k, v]) => (
+              <div key={k}>
+                <p className="text-xs text-slate-400 mb-1">{k}</p>
+                <DetailView detail={v} />
+              </div>
+            ))}
+          </div>
+        );
+      }
+      return <p className="mt-2 text-sm text-slate-500">{String(detail)}</p>;
+    }
+
+    function MessageBubble({ msg }) {
+      const isUser = msg.role === 'user';
+      return (
+        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-bubble`}>
+          <div className={`flex gap-2.5 max-w-[88%] ${isUser ? 'flex-row-reverse' : ''}`}>
+            <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base ${isUser ? 'bg-indigo-100' : 'bg-violet-100'}`}>
+              {isUser ? '🙋' : '🤖'}
+            </div>
+            <div className={`rounded-2xl px-4 py-2.5 ${isUser ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'}`}>
+              {msg.error
+                ? <p className="text-rose-500 text-sm">{msg.text}</p>
+                : <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>}
+              {!isUser && !msg.error && <DetailView detail={msg.detail} />}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function TypingBubble() {
+      return (
+        <div className="flex justify-start animate-bubble">
+          <div className="flex gap-2.5">
+            <div className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base bg-violet-100">🤖</div>
+            <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-white border border-slate-200 shadow-sm flex items-center gap-1">
+              <span className="typing-dot w-2 h-2 bg-slate-400 rounded-full" style={{ animationDelay: '0s' }} />
+              <span className="typing-dot w-2 h-2 bg-slate-400 rounded-full" style={{ animationDelay: '0.2s' }} />
+              <span className="typing-dot w-2 h-2 bg-slate-400 rounded-full" style={{ animationDelay: '0.4s' }} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ChatPanel({ messages, sending, onSend }) {
+      const [input, setInput] = useState('');
+      const logRef = useRef(null);
+
+      useEffect(() => {
+        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+      }, [messages, sending]);
+
+      const submit = (text) => {
+        const q = (text ?? input).trim();
+        if (!q || sending) return;
+        onSend(q);
+        setInput('');
+      };
+
+      return (
+        <Card className="flex flex-col h-[600px] overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-700 flex items-center gap-2">💬 분석가에게 질문하기</h3>
+            <p className="text-xs text-slate-400 mt-0.5">같은 가계부 DB를 읽고 답해드려요.</p>
+          </div>
+
+          {/* 채팅 로그 */}
+          <div ref={logRef} className="scroll-area flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-slate-50/50">
+            {messages.length === 0 && !sending && (
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-400">
+                <p className="text-4xl mb-3">🧮</p>
+                <p className="font-medium text-slate-500">무엇이든 물어보세요</p>
+                <p className="text-sm mt-1">아래 추천 질문을 눌러보셔도 좋아요.</p>
+              </div>
+            )}
+            {messages.map((m, i) => <MessageBubble key={i} msg={m} />)}
+            {sending && <TypingBubble />}
+          </div>
+
+          {/* 추천 질문 칩 */}
+          <div className="px-4 pt-3 border-t border-slate-100">
+            <div className="flex gap-2 overflow-x-auto pb-3 scroll-area">
+              {SUGGESTED.map((s) => (
+                <Chip key={s} onClick={() => submit(s)} disabled={sending}>{s}</Chip>
+              ))}
+            </div>
+          </div>
+
+          {/* 입력창 */}
+          <form
+            className="flex gap-2 p-4 pt-0"
+            onSubmit={(e) => { e.preventDefault(); submit(); }}
+          >
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="예) 이번 달 식비 얼마야?"
+              disabled={sending}
+              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent disabled:bg-slate-50"
+              aria-label="질문 입력"
+            />
+            <Button type="submit" disabled={sending || !input.trim()} size="lg">
+              {sending ? <Spinner className="w-4 h-4 text-white" /> : '전송'}
+            </Button>
+          </form>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🚀 App
+    // ========================================
+    function App() {
+      const [stats, setStats] = useState(null);
+      const [statsLoading, setStatsLoading] = useState(true);
+      const [statsError, setStatsError] = useState(null);
+
+      const [messages, setMessages] = useState([]);
+      const [sending, setSending] = useState(false);
+
+      const loadStats = useCallback(async () => {
+        setStatsLoading(true);
+        setStatsError(null);
+        try {
+          const res = await fetch(`${API_BASE_URL}/stats`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          if (json.success === false) throw new Error(json.message || '요청 실패');
+          setStats(json.data ?? json);
+        } catch (e) {
+          setStatsError(e.message || '알 수 없는 오류');
+        } finally {
+          setStatsLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { loadStats(); }, [loadStats]);
+
+      const handleSend = useCallback(async (question) => {
+        setMessages((prev) => [...prev, { role: 'user', text: question }]);
+        setSending(true);
+        try {
+          const res = await fetch(`${API_BASE_URL}/ask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          if (json.success === false) throw new Error(json.message || '응답 실패');
+          const data = json.data ?? json;
+          setMessages((prev) => [...prev, {
+            role: 'assistant',
+            text: data.answer ?? '답변을 받지 못했어요.',
+            detail: data.detail ?? null,
+          }]);
+        } catch (e) {
+          setMessages((prev) => [...prev, {
+            role: 'assistant',
+            error: true,
+            text: `답변을 가져오지 못했어요. (${e.message})`,
+          }]);
+        } finally {
+          setSending(false);
+        }
+      }, []);
+
+      return (
+        <div className="min-h-screen">
+          {/* 상단 헤더 */}
+          <header className="bg-white border-b border-slate-200">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-2xl shadow">🤖</div>
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold text-slate-800">내 가계부를 아는 AI 분석가</h1>
+                  <p className="text-sm text-slate-500">같은 가계부 DB를 읽어서 분석·조언해줘요.</p>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* 본문 */}
+          <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-700">📊 분석 대시보드</h2>
+                <Button variant="secondary" size="sm" onClick={loadStats} disabled={statsLoading}>
+                  {statsLoading ? <Spinner className="w-4 h-4" /> : '↻ 새로고침'}
+                </Button>
+              </div>
+              <Dashboard stats={stats} loading={statsLoading} error={statsError} onRetry={loadStats} />
+            </section>
+
+            <section>
+              <ChatPanel messages={messages} sending={sending} onSend={handleSend} />
+            </section>
+          </main>
+
+          <footer className="text-center text-xs text-slate-400 py-8">
+            가계부 분석 에이전트 · 데이터 출처: 공용 가계부 DB
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

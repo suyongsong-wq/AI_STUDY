@@ -1,0 +1,14 @@
+{
+  "name": "household-ledger-analyst",
+  "version": "1.0.0",
+  "description": "Agent+DB 가계부 분석 에이전트 — 같은 Supabase DB를 읽어 분석/조언",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

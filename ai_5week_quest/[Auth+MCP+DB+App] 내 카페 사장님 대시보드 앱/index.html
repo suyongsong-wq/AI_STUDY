@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>내 카페 사장님 대시보드</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.4s ease both; }
+    @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    .bar-grow { animation: grow 0.6s ease both; transform-origin: bottom; }
+  </style>
+</head>
+<body class="bg-stone-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks & Supabase 인스턴스
+    // ========================================
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+    const SUPABASE_URL = 'https://ibxhnwovdtnfttfzqpos.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_7RB2j_pC9YcoPG5N1n8uZg_p12ndXjr';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const TODO_STORAGE_KEY = 'cafe_owner_todos_v1';
+    const DEFAULT_TODOS = ['우유 발주', '원두 입고 확인', '디저트 당일생산 체크'];
+
+    // ========================================
+    // 유틸리티
+    // ========================================
+    const won = (n) => (Number(n) || 0).toLocaleString('ko-KR') + '원';
+    const fmtDate = (d) => {
+      if (!d) return '-';
+      const dt = new Date(d);
+      if (isNaN(dt)) return String(d);
+      return `${dt.getMonth() + 1}/${dt.getDate()}`;
+    };
+    const stars = (avg) => {
+      const full = Math.round(avg);
+      return '★'.repeat(full) + '☆'.repeat(Math.max(0, 5 - full));
+    };
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', disabled, onClick, type = 'button', className = '', children }) {
+      const base = 'inline-flex items-center justify-center font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-amber-700 hover:bg-amber-800 text-white focus:ring-amber-500',
+        secondary: 'bg-stone-200 hover:bg-stone-300 text-stone-800 focus:ring-stone-400',
+        danger: 'bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-400',
+        ghost: 'bg-transparent hover:bg-stone-100 text-stone-600 focus:ring-stone-300',
+      };
+      const sizes = { sm: 'text-sm px-3 py-1.5', md: 'text-sm px-4 py-2', lg: 'text-base px-5 py-3' };
+      return (
+        <button type={type} onClick={onClick} disabled={disabled}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ type = 'text', label, value, onChange, placeholder, error, disabled, autoComplete }) {
+      return (
+        <label className="block">
+          {label && <span className="block text-sm font-medium text-stone-700 mb-1">{label}</span>}
+          <input
+            type={type} value={value} onChange={onChange} placeholder={placeholder}
+            disabled={disabled} autoComplete={autoComplete}
+            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 transition
+              ${error ? 'border-rose-400 focus:ring-rose-300' : 'border-stone-300 focus:ring-amber-400'}
+              ${disabled ? 'bg-stone-100' : 'bg-white'}`}
+          />
+          {error && <span className="block text-xs text-rose-600 mt-1">{error}</span>}
+        </label>
+      );
+    }
+
+    function Card({ title, icon, className = '', children, action }) {
+      return (
+        <section className={`bg-white rounded-2xl shadow-sm border border-stone-200 p-5 ${className}`}>
+          {(title || action) && (
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="flex items-center gap-2 text-base font-bold text-stone-800">
+                {icon && <span className="text-xl">{icon}</span>}{title}
+              </h2>
+              {action}
+            </div>
+          )}
+          {children}
+        </section>
+      );
+    }
+
+    function Badge({ color = 'stone', children }) {
+      const colors = {
+        stone: 'bg-stone-100 text-stone-700',
+        amber: 'bg-amber-100 text-amber-800',
+        green: 'bg-emerald-100 text-emerald-700',
+        red: 'bg-rose-100 text-rose-700',
+      };
+      return <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${colors[color]}`}>{children}</span>;
+    }
+
+    function Spinner({ label = '불러오는 중...' }) {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 text-stone-400">
+          <div className="w-8 h-8 border-3 border-stone-200 border-t-amber-600 rounded-full animate-spin mb-3"
+            style={{ borderWidth: '3px' }}></div>
+          <span className="text-sm">{label}</span>
+        </div>
+      );
+    }
+
+    function EmptyState({ children }) {
+      return <div className="text-center text-sm text-stone-400 py-8">{children}</div>;
+    }
+
+    // ========================================
+    // 🔐 로그인 화면
+    // ========================================
+    function LoginScreen() {
+      const [mode, setMode] = useState('login'); // 'login' | 'signup'
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [info, setInfo] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError(''); setInfo('');
+        if (!email.trim()) { setError('이메일을 입력해 주세요.'); return; }
+        // ★ 로그인에는 비밀번호 길이 검증을 걸지 않음 (데모 비번 4자)
+        if (mode === 'signup' && password.length < 6) {
+          setError('회원가입 비밀번호는 6자 이상이어야 해요.'); return;
+        }
+        setLoading(true);
+        try {
+          if (mode === 'login') {
+            const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+            if (error) throw error;
+            // 성공 시 onAuthStateChange가 화면 전환 처리
+          } else {
+            const { error } = await sb.auth.signUp({ email: email.trim(), password });
+            if (error) throw error;
+            setInfo('가입 요청 완료! 이메일 확인이 필요할 수 있어요. 확인 후 로그인해 주세요.');
+            setMode('login');
+          }
+        } catch (err) {
+          setError(err.message || '요청 중 오류가 발생했어요.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-amber-50 to-stone-200">
+          <div className="w-full max-w-sm fade-in">
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-2">☕</div>
+              <h1 className="text-2xl font-extrabold text-stone-800">내 카페 사장님 대시보드</h1>
+              <p className="text-sm text-stone-500 mt-1">하버스카페 운영 현황을 한눈에</p>
+            </div>
+
+            <Card>
+              <div className="flex gap-2 mb-5">
+                <button onClick={() => { setMode('login'); setError(''); setInfo(''); }}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${mode === 'login' ? 'bg-amber-700 text-white' : 'bg-stone-100 text-stone-500'}`}>
+                  로그인
+                </button>
+                <button onClick={() => { setMode('signup'); setError(''); setInfo(''); }}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${mode === 'signup' ? 'bg-amber-700 text-white' : 'bg-stone-100 text-stone-500'}`}>
+                  회원가입
+                </button>
+              </div>
+
+              <form onSubmit={submit} className="space-y-4">
+                <Input label="이메일" type="email" value={email} autoComplete="username"
+                  onChange={(e) => setEmail(e.target.value)} placeholder="owner@cafe.com" />
+                <Input label="비밀번호" type="password" value={password} autoComplete="current-password"
+                  onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" />
+
+                {error && <div className="text-xs text-rose-600 bg-rose-50 rounded-lg p-2">{error}</div>}
+                {info && <div className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">{info}</div>}
+
+                <Button type="submit" size="lg" disabled={loading} className="w-full">
+                  {loading ? '처리 중...' : (mode === 'login' ? '로그인' : '회원가입')}
+                </Button>
+              </form>
+
+              <div className="mt-5 text-xs text-stone-500 bg-stone-50 rounded-lg p-3 leading-relaxed">
+                <span className="font-semibold text-stone-700">🔑 데모 계정</span><br />
+                이메일: <span className="font-mono">suyong.song@griff.co.kr</span><br />
+                비밀번호: <span className="font-mono">1234</span>
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🧩 헤더
+    // ========================================
+    function Header({ email, onLogout }) {
+      return (
+        <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-2xl">☕</span>
+              <h1 className="text-lg font-extrabold text-stone-800 truncate">사장님 대시보드</h1>
+            </div>
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="hidden sm:inline text-sm text-stone-500 truncate max-w-[200px]">{email}</span>
+              <Button variant="secondary" size="sm" onClick={onLogout}>로그아웃</Button>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // 🤖 위젯 1: AI 브리핑 (규칙기반, DB 종합)
+    // ========================================
+    function AIBriefing({ summary }) {
+      if (!summary) return null;
+      const { latestDate, latestRevenue, revenueDiff, topMenu, avgRating, negTheme, recommend } = summary;
+
+      let diffText = '';
+      if (revenueDiff !== null) {
+        if (revenueDiff > 0) diffText = `전일보다 ${won(Math.abs(revenueDiff))} 늘었어요`;
+        else if (revenueDiff < 0) diffText = `전일보다 ${won(Math.abs(revenueDiff))} 줄었어요`;
+        else diffText = '전일과 비슷해요';
+      }
+
+      return (
+        <Card className="md:col-span-2 lg:col-span-3 bg-gradient-to-r from-amber-700 to-amber-800 text-white border-0">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl">🤖</div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-base font-bold">AI 브리핑</h2>
+                <Badge color="amber">규칙기반</Badge>
+              </div>
+              <p className="text-amber-50 leading-relaxed text-sm sm:text-base">
+                <span className="font-bold">좋은 아침, 하버스카페 사장님!</span>{' '}
+                최근({fmtDate(latestDate)}) 매출은 <span className="font-bold text-white">{won(latestRevenue)}</span>
+                {diffText && <>, {diffText}</>}.{' '}
+                {topMenu && <>요즘 인기 메뉴는 <span className="font-bold text-white">{topMenu}</span>예요. </>}
+                {avgRating !== null && <>리뷰 평균 <span className="font-bold text-white">{stars(avgRating)} {avgRating.toFixed(1)}</span></>}
+                {negTheme && <>, 불만 1위는 <span className="font-bold text-white">'{negTheme}'</span></>}.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 bg-white/15 rounded-lg px-3 py-2 text-sm">
+                <span>💡</span><span>{recommend}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // ✅ 위젯 2: 오늘 할일 (localStorage)
+    // ========================================
+    function TodoWidget() {
+      const [todos, setTodos] = useState([]);
+      const [text, setText] = useState('');
+
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem(TODO_STORAGE_KEY);
+          if (saved) setTodos(JSON.parse(saved));
+          else setTodos(DEFAULT_TODOS.map((t, i) => ({ id: Date.now() + i, text: t, done: false })));
+        } catch {
+          setTodos(DEFAULT_TODOS.map((t, i) => ({ id: Date.now() + i, text: t, done: false })));
+        }
+      }, []);
+
+      useEffect(() => {
+        localStorage.setItem(TODO_STORAGE_KEY, JSON.stringify(todos));
+      }, [todos]);
+
+      const add = (e) => {
+        e.preventDefault();
+        const v = text.trim();
+        if (!v) return;
+        setTodos((p) => [...p, { id: Date.now(), text: v, done: false }]);
+        setText('');
+      };
+      const toggle = (id) => setTodos((p) => p.map((t) => t.id === id ? { ...t, done: !t.done } : t));
+      const remove = (id) => setTodos((p) => p.filter((t) => t.id !== id));
+
+      const doneCount = todos.filter((t) => t.done).length;
+
+      return (
+        <Card title="오늘 할일" icon="✅"
+          action={<Badge color={doneCount === todos.length && todos.length ? 'green' : 'stone'}>{doneCount}/{todos.length}</Badge>}>
+          <form onSubmit={add} className="flex gap-2 mb-3">
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="할 일 추가..."
+              className="flex-1 rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            <Button type="submit" size="sm">추가</Button>
+          </form>
+          <ul className="space-y-1 max-h-64 overflow-y-auto">
+            {todos.length === 0 && <EmptyState>할 일이 없어요. 추가해 보세요!</EmptyState>}
+            {todos.map((t) => (
+              <li key={t.id} className="flex items-center gap-2 group rounded-lg hover:bg-stone-50 px-2 py-1.5">
+                <input type="checkbox" checked={t.done} onChange={() => toggle(t.id)}
+                  className="w-4 h-4 accent-amber-700 cursor-pointer" />
+                <span className={`flex-1 text-sm ${t.done ? 'line-through text-stone-400' : 'text-stone-700'}`}>{t.text}</span>
+                <button onClick={() => remove(t.id)} aria-label="삭제"
+                  className="text-stone-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition px-1">✕</button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 📊 위젯 3: 이번 주 매출 (cafe_sales 최근 7일)
+    // ========================================
+    function WeeklySales({ sales }) {
+      const recent = useMemo(() => {
+        return [...(sales || [])]
+          .sort((a, b) => new Date(a.date) - new Date(b.date))
+          .slice(-7);
+      }, [sales]);
+
+      const total = recent.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
+      const max = Math.max(1, ...recent.map((r) => Number(r.revenue) || 0));
+
+      return (
+        <Card title="이번 주 매출" icon="📊"
+          action={<span className="text-sm font-bold text-amber-700">{won(total)}</span>}>
+          {recent.length === 0 ? <EmptyState>매출 데이터가 없어요.</EmptyState> : (
+            <>
+              <div className="flex items-end justify-between gap-1.5 h-32 mb-2">
+                {recent.map((r, i) => {
+                  const h = ((Number(r.revenue) || 0) / max) * 100;
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 group">
+                      <span className="text-[10px] text-stone-400 opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
+                        {won(r.revenue)}
+                      </span>
+                      <div className="w-full bg-amber-600 hover:bg-amber-700 rounded-t bar-grow transition"
+                        style={{ height: `${Math.max(4, h)}%` }} title={won(r.revenue)}></div>
+                      <span className="text-[10px] text-stone-500">{fmtDate(r.date)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-xs text-stone-400 text-right">손님 합계 {recent.reduce((s, r) => s + (Number(r.customers) || 0), 0).toLocaleString('ko-KR')}명</div>
+            </>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🏆 위젯 4: 인기 메뉴 TOP3 (cafe_menu_sales)
+    // ========================================
+    function TopMenus({ menuSales }) {
+      const top3 = useMemo(() => {
+        const map = {};
+        (menuSales || []).forEach((m) => {
+          if (!map[m.menu]) map[m.menu] = { menu: m.menu, qty: 0, amount: 0 };
+          map[m.menu].qty += Number(m.qty) || 0;
+          map[m.menu].amount += Number(m.amount) || 0;
+        });
+        return Object.values(map).sort((a, b) => b.amount - a.amount).slice(0, 3);
+      }, [menuSales]);
+
+      const medals = ['🥇', '🥈', '🥉'];
+
+      return (
+        <Card title="인기 메뉴 TOP3" icon="🏆">
+          {top3.length === 0 ? <EmptyState>메뉴 판매 데이터가 없어요.</EmptyState> : (
+            <ul className="space-y-2">
+              {top3.map((m, i) => (
+                <li key={m.menu} className="flex items-center gap-3 bg-stone-50 rounded-lg p-3">
+                  <span className="text-xl">{medals[i]}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-stone-800 text-sm truncate">{m.menu}</div>
+                    <div className="text-xs text-stone-500">{m.qty.toLocaleString('ko-KR')}잔</div>
+                  </div>
+                  <div className="text-sm font-bold text-amber-700">{won(m.amount)}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // ⭐ 위젯 5: 리뷰 요약 (보너스)
+    // ========================================
+    function ReviewSummary({ reviews }) {
+      const { avg, count, lastNeg } = useMemo(() => {
+        const list = reviews || [];
+        const count = list.length;
+        const avg = count ? list.reduce((s, r) => s + (Number(r.rating) || 0), 0) / count : 0;
+        const negSorted = [...list]
+          .filter((r) => (Number(r.rating) || 0) <= 3)
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+        return { avg, count, lastNeg: negSorted[0] || null };
+      }, [reviews]);
+
+      return (
+        <Card title="리뷰 요약" icon="⭐">
+          {count === 0 ? <EmptyState>리뷰가 없어요.</EmptyState> : (
+            <>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-2xl font-extrabold text-amber-600">{avg.toFixed(1)}</span>
+                <span className="text-lg text-amber-500">{stars(avg)}</span>
+                <span className="text-xs text-stone-400">리뷰 {count}건</span>
+              </div>
+              <div className="mt-3 border-t border-stone-100 pt-3">
+                <div className="text-xs font-semibold text-stone-500 mb-1">최근 부정 리뷰</div>
+                {lastNeg ? (
+                  <div className="bg-rose-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge color="red">{stars(lastNeg.rating)} {lastNeg.rating}</Badge>
+                      {lastNeg.platform && <span className="text-xs text-stone-400">{lastNeg.platform}</span>}
+                      {lastNeg.theme && <Badge color="stone">{lastNeg.theme}</Badge>}
+                    </div>
+                    <p className="text-sm text-stone-700 leading-snug">"{lastNeg.review}"</p>
+                    <div className="text-[11px] text-stone-400 mt-1">{fmtDate(lastNeg.date)}</div>
+                  </div>
+                ) : <div className="text-sm text-emerald-600">최근 부정 리뷰가 없어요! 👏</div>}
+              </div>
+            </>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 📄 대시보드 (데이터 fetch + 집계)
+    // ========================================
+    function Dashboard({ session, onLogout }) {
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const [sales, setSales] = useState([]);
+      const [menuSales, setMenuSales] = useState([]);
+      const [reviews, setReviews] = useState([]);
+
+      const loadData = useCallback(async () => {
+        setLoading(true); setError('');
+        try {
+          const [s, m, r] = await Promise.all([
+            sb.from('cafe_sales').select('date,revenue,customers').order('date', { ascending: true }),
+            sb.from('cafe_menu_sales').select('date,menu,qty,amount'),
+            sb.from('cafe_reviews').select('date,platform,rating,review,theme'),
+          ]);
+          if (s.error) throw s.error;
+          if (m.error) throw m.error;
+          if (r.error) throw r.error;
+          setSales(s.data || []);
+          setMenuSales(m.data || []);
+          setReviews(r.data || []);
+        } catch (err) {
+          setError(err.message || '데이터를 불러오지 못했어요.');
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { loadData(); }, [loadData]);
+
+      // --- AI 브리핑용 종합 집계 ---
+      const summary = useMemo(() => {
+        if (!sales.length && !menuSales.length && !reviews.length) return null;
+
+        const sortedSales = [...sales].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const latest = sortedSales[sortedSales.length - 1] || null;
+        const prev = sortedSales[sortedSales.length - 2] || null;
+        const latestRevenue = latest ? Number(latest.revenue) || 0 : 0;
+        const revenueDiff = (latest && prev) ? latestRevenue - (Number(prev.revenue) || 0) : null;
+
+        // 인기 메뉴 1위 (amount 합)
+        const menuMap = {};
+        menuSales.forEach((x) => { menuMap[x.menu] = (menuMap[x.menu] || 0) + (Number(x.amount) || 0); });
+        const topMenu = Object.entries(menuMap).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+        // 리뷰 평균 별점
+        const avgRating = reviews.length
+          ? reviews.reduce((s, r) => s + (Number(r.rating) || 0), 0) / reviews.length
+          : null;
+
+        // 부정 테마 1위 (rating <= 3 인 리뷰의 theme 빈도)
+        const themeMap = {};
+        reviews.filter((r) => (Number(r.rating) || 0) <= 3 && r.theme).forEach((r) => {
+          themeMap[r.theme] = (themeMap[r.theme] || 0) + 1;
+        });
+        const negTheme = Object.entries(themeMap).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+        // 추천 1개 (부정 테마 기반)
+        const recoMap = {
+          '대기시간': "피크 시간대 픽업 동선과 인력 배치를 점검해 보세요.",
+          '맛': "시그니처 메뉴 레시피 일관성을 한 번 점검해 보세요.",
+          '가격': "가성비 세트나 멤버십 혜택을 검토해 보세요.",
+          '청결': "홀·화장실 위생 체크리스트를 강화해 보세요.",
+          '친절': "응대 멘트와 직원 교육을 짧게 리프레시해 보세요.",
+          '주차': "인근 제휴 주차 안내를 매장에 비치해 보세요.",
+        };
+        let recommend;
+        if (negTheme) recommend = recoMap[negTheme] || `'${negTheme}' 관련 불만이 늘고 있어요. 원인을 점검해 보세요.`;
+        else if (revenueDiff !== null && revenueDiff < 0) recommend = "매출이 소폭 줄었어요. 인기 메뉴 프로모션을 고려해 보세요.";
+        else recommend = `인기 메뉴 '${topMenu || ''}' 재료 재고를 넉넉히 확보해 보세요.`;
+
+        return {
+          latestDate: latest?.date || null,
+          latestRevenue, revenueDiff, topMenu, avgRating, negTheme, recommend,
+        };
+      }, [sales, menuSales, reviews]);
+
+      return (
+        <div className="min-h-screen">
+          <Header email={session.user?.email} onLogout={onLogout} />
+          <main className="max-w-6xl mx-auto px-4 py-6">
+            {loading ? (
+              <Card><Spinner label="카페 데이터를 모으는 중..." /></Card>
+            ) : error ? (
+              <Card>
+                <div className="text-center py-8">
+                  <div className="text-3xl mb-2">⚠️</div>
+                  <p className="text-rose-600 text-sm mb-4">{error}</p>
+                  <Button onClick={loadData}>다시 시도</Button>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 fade-in">
+                <AIBriefing summary={summary} />
+                <WeeklySales sales={sales} />
+                <TopMenus menuSales={menuSales} />
+                <ReviewSummary reviews={reviews} />
+                <TodoWidget />
+              </div>
+            )}
+          </main>
+          <footer className="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-stone-400">
+            ☕ 하버스카페 사장님 대시보드 · supabase-js + React 단일 파일 데모
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App (Auth 게이트)
+    // ========================================
+    function App() {
+      const [session, setSession] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+
+      useEffect(() => {
+        // 1) 기존 세션 확인
+        sb.auth.getSession().then(({ data }) => {
+          setSession(data.session);
+          setAuthLoading(false);
+        });
+        // 2) 인증 상태 변화 구독
+        const { data: sub } = sb.auth.onAuthStateChange((_event, sess) => {
+          setSession(sess);
+          setAuthLoading(false);
+        });
+        return () => sub.subscription.unsubscribe();
+      }, []);
+
+      const logout = async () => { await sb.auth.signOut(); };
+
+      if (authLoading) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-stone-100">
+            <Spinner label="세션 확인 중..." />
+          </div>
+        );
+      }
+
+      return session ? <Dashboard session={session} onLogout={logout} /> : <LoginScreen />;
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

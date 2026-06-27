@@ -1,0 +1,14 @@
+{
+  "name": "household-ledger-app",
+  "version": "1.0.0",
+  "description": "Server+DB 가계부 앱 — Express + Supabase(PostgreSQL)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

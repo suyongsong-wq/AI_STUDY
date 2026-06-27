@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>가계부</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel 최신(7.26.x)은 text/babel 변환 버그가 있어 안정 버전 7.23.5로 고정 -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <style>
+    /* 막대 그래프 width 전환 애니메이션 (Tailwind 기본 transition 보강) */
+    .bar-fill { transition: width .5s ease; }
+  </style>
+</head>
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // ========================================
+    // 🔧 설정 / 유틸
+    // ========================================
+    const API_BASE_URL = '/api';
+
+    // 원화 콤마 포맷 (예: 1234567 -> "1,234,567")
+    const won = (n) => (Number(n) || 0).toLocaleString('ko-KR');
+
+    // 오늘 날짜 YYYY-MM-DD
+    const today = () => new Date().toISOString().slice(0, 10);
+
+    // 날짜 표시용 포맷 (DB는 ISO로 옴 -> 로컬 YYYY-MM-DD)
+    const fmtDate = (d) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      if (isNaN(dt)) return String(d).slice(0, 10);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const day = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    // 카테고리 프리셋
+    const CATEGORIES = {
+      expense: ['식비', '카페', '교통', '주거', '구독료', '쇼핑', '경조사', '문화', '의료'],
+      income: ['급여', '부수입', '용돈', '환급', '이자'],
+    };
+
+    // 카테고리별 막대 색상 (순환)
+    const BAR_COLORS = [
+      'bg-rose-400', 'bg-amber-400', 'bg-emerald-400', 'bg-sky-400',
+      'bg-violet-400', 'bg-pink-400', 'bg-teal-400', 'bg-indigo-400', 'bg-orange-400',
+    ];
+
+    // API 헬퍼 — 응답은 {success, data} 형태, data만 꺼내 반환
+    async function api(path, options) {
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      let json = null;
+      try { json = await res.json(); } catch (_) { /* no body */ }
+      if (!res.ok || (json && json.success === false)) {
+        throw new Error((json && json.message) || `요청 실패 (${res.status})`);
+      }
+      return json ? json.data : null;
+    }
+
+    // ========================================
+    // 🎨 디자인 시스템 컴포넌트
+    // ========================================
+    function Card({ children, className = '' }) {
+      return (
+        <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Button({ children, variant = 'primary', size = 'md', className = '', ...props }) {
+      const variants = {
+        primary: 'bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-300',
+        secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+        danger: 'text-rose-500 hover:bg-rose-50',
+        ghost: 'text-slate-500 hover:bg-slate-100',
+      };
+      const sizes = { sm: 'px-2.5 py-1 text-sm', md: 'px-4 py-2 text-sm', lg: 'px-5 py-3 text-base' };
+      return (
+        <button
+          className={`rounded-xl font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+          {...props}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Field({ label, children }) {
+      return (
+        <label className="block">
+          <span className="block mb-1 text-xs font-semibold text-slate-500">{label}</span>
+          {children}
+        </label>
+      );
+    }
+
+    const inputCls =
+      'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300';
+
+    function Spinner({ label = '불러오는 중…' }) {
+      return (
+        <div className="flex items-center justify-center gap-2 py-8 text-slate-400 text-sm">
+          <span className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></span>
+          {label}
+        </div>
+      );
+    }
+
+    function ErrorBox({ message, onRetry }) {
+      return (
+        <div className="flex flex-col items-center gap-2 py-8 text-center">
+          <p className="text-sm text-rose-500">⚠️ {message}</p>
+          {onRetry && <Button variant="secondary" size="sm" onClick={onRetry}>다시 시도</Button>}
+        </div>
+      );
+    }
+
+    function Empty({ message }) {
+      return <p className="py-10 text-center text-sm text-slate-400">{message}</p>;
+    }
+
+    // ========================================
+    // 🧩 요약 카드 영역
+    // ========================================
+    function SummaryCards({ summary, loading }) {
+      const items = [
+        { key: 'income', label: '수입', value: summary?.income, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { key: 'expense', label: '지출', value: summary?.expense, color: 'text-rose-600', bg: 'bg-rose-50' },
+        { key: 'balance', label: '잔액', value: summary?.balance, color: 'text-slate-900', bg: 'bg-slate-100' },
+      ];
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          {items.map((it) => (
+            <Card key={it.key} className={`p-5 ${it.bg} border-transparent`}>
+              <p className="text-xs font-semibold text-slate-500">{it.label}</p>
+              <p className={`mt-2 text-2xl font-bold ${it.color}`}>
+                {loading ? '—' : `${won(it.value)}원`}
+              </p>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🧩 입력 폼
+    // ========================================
+    function TransactionForm({ onCreated }) {
+      const [type, setType] = useState('expense');
+      const [date, setDate] = useState(today());
+      const [category, setCategory] = useState(CATEGORIES.expense[0]);
+      const [customCategory, setCustomCategory] = useState('');
+      const [amount, setAmount] = useState('');
+      const [memo, setMemo] = useState('');
+      const [submitting, setSubmitting] = useState(false);
+      const [error, setError] = useState(null);
+
+      const useCustom = category === '__custom__';
+
+      // 유형 변경 시 카테고리 기본값 재설정
+      const changeType = (t) => {
+        setType(t);
+        setCategory(CATEGORIES[t][0]);
+        setCustomCategory('');
+      };
+
+      const reset = () => {
+        setAmount('');
+        setMemo('');
+        setCustomCategory('');
+        setCategory(CATEGORIES[type][0]);
+      };
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        const finalCategory = useCustom ? customCategory.trim() : category;
+        if (!finalCategory) { setError('카테고리를 입력하세요.'); return; }
+        if (!amount || Number(amount) <= 0) { setError('금액을 올바르게 입력하세요.'); return; }
+
+        setSubmitting(true);
+        try {
+          await api('/transactions', {
+            method: 'POST',
+            body: JSON.stringify({
+              type,
+              date,
+              category: finalCategory,
+              amount: Number(amount),
+              memo: memo.trim(),
+            }),
+          });
+          reset();
+          onCreated();
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      return (
+        <Card className="p-5">
+          <h2 className="text-sm font-bold text-slate-700 mb-4">내역 추가</h2>
+          <form onSubmit={submit} className="space-y-4">
+            {/* 유형 토글 */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => changeType('expense')}
+                className={`py-2 rounded-lg text-sm font-semibold transition ${type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}
+              >
+                지출
+              </button>
+              <button
+                type="button"
+                onClick={() => changeType('income')}
+                className={`py-2 rounded-lg text-sm font-semibold transition ${type === 'income' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+              >
+                수입
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="날짜">
+                <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+              </Field>
+
+              <Field label="카테고리">
+                <select
+                  className={inputCls}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  {CATEGORIES[type].map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value="__custom__">+ 직접 입력</option>
+                </select>
+              </Field>
+            </div>
+
+            {useCustom && (
+              <Field label="카테고리 직접 입력">
+                <input
+                  className={inputCls}
+                  placeholder="예: 반려동물"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                />
+              </Field>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="금액 (원)">
+                <input
+                  type="number"
+                  min="0"
+                  className={inputCls}
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </Field>
+              <Field label="메모 (선택)">
+                <input
+                  className={inputCls}
+                  placeholder="예: 점심 김밥"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                />
+              </Field>
+            </div>
+
+            {error && <p className="text-xs text-rose-500">{error}</p>}
+
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+              {submitting ? '추가 중…' : '추가'}
+            </Button>
+          </form>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🧩 카테고리별 지출 막대 그래프
+    // ========================================
+    function CategoryChart({ byCategory, loading, error, onRetry }) {
+      // byCategory: [{ category, amount }] 가정. 객체로 와도 방어 처리.
+      const rows = useMemo(() => {
+        if (!byCategory) return [];
+        const arr = Array.isArray(byCategory)
+          ? byCategory
+          : Object.entries(byCategory).map(([category, total]) => ({ category, total }));
+        return arr
+          // 서버는 { category, total } 형태로 응답 (amount 키도 방어)
+          .map((r) => ({ category: r.category, amount: Number(r.total ?? r.amount) || 0 }))
+          .filter((r) => r.amount > 0)
+          .sort((a, b) => b.amount - a.amount);
+      }, [byCategory]);
+
+      const total = rows.reduce((s, r) => s + r.amount, 0);
+
+      return (
+        <Card className="p-5">
+          <h2 className="text-sm font-bold text-slate-700 mb-4">카테고리별 지출</h2>
+          {loading ? (
+            <Spinner />
+          ) : error ? (
+            <ErrorBox message={error} onRetry={onRetry} />
+          ) : rows.length === 0 ? (
+            <Empty message="지출 내역이 없습니다." />
+          ) : (
+            <div className="space-y-3">
+              {rows.map((r, i) => {
+                const pct = total ? Math.round((r.amount / total) * 100) : 0;
+                return (
+                  <div key={r.category}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="font-medium text-slate-700">{r.category}</span>
+                      <span className="text-slate-500">
+                        {won(r.amount)}원 <span className="text-slate-400">({pct}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`bar-fill h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🧩 내역 목록
+    // ========================================
+    function TransactionList({ items, loading, error, onRetry, onDelete }) {
+      const [deletingId, setDeletingId] = useState(null);
+
+      const handleDelete = async (id) => {
+        setDeletingId(id);
+        try {
+          await onDelete(id);
+        } finally {
+          setDeletingId(null);
+        }
+      };
+
+      return (
+        <Card className="p-5">
+          <h2 className="text-sm font-bold text-slate-700 mb-4">
+            내역 {items && items.length > 0 ? `(${items.length})` : ''}
+          </h2>
+          {loading ? (
+            <Spinner />
+          ) : error ? (
+            <ErrorBox message={error} onRetry={onRetry} />
+          ) : !items || items.length === 0 ? (
+            <Empty message="아직 등록된 내역이 없습니다." />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {items.map((t) => {
+                const isIncome = t.type === 'income';
+                return (
+                  <li key={t.id} className="flex items-center gap-3 py-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
+                          {t.category}
+                        </span>
+                        <span className="text-xs text-slate-400">{fmtDate(t.date)}</span>
+                      </div>
+                      {t.memo && <p className="mt-1 text-sm text-slate-600 truncate">{t.memo}</p>}
+                    </div>
+                    <span className={`font-semibold text-sm whitespace-nowrap ${isIncome ? 'text-blue-600' : 'text-rose-600'}`}>
+                      {isIncome ? '+' : '-'}{won(t.amount)}원
+                    </span>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDelete(t.id)}
+                      disabled={deletingId === t.id}
+                      aria-label="삭제"
+                    >
+                      {deletingId === t.id ? '…' : '삭제'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🚀 App
+    // ========================================
+    // ========================================
+    // 🧩 예산 대비 알림 카드 (창의성)
+    // ========================================
+    function BudgetCard({ transactions }) {
+      const [budget, setBudget] = useState(() => Number(localStorage.getItem('ledger_budget')) || 1500000);
+      const [editing, setEditing] = useState(false);
+      const [draft, setDraft] = useState(budget);
+
+      // 이번 달 지출 합계 (date 기준 현재 연-월)
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const monthExpense = useMemo(() =>
+        (transactions || [])
+          .filter((t) => t.type === 'expense' && fmtDate(t.date).slice(0, 7) === ym)
+          .reduce((s, t) => s + (Number(t.amount) || 0), 0),
+        [transactions, ym]);
+
+      const pct = budget > 0 ? Math.round((monthExpense / budget) * 100) : 0;
+      const remain = budget - monthExpense;
+      const level = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : 'ok';
+      const barColor = level === 'over' ? 'bg-rose-500' : level === 'warn' ? 'bg-amber-400' : 'bg-emerald-500';
+      const msg = level === 'over'
+        ? `🚨 예산을 ${won(-remain)}원 초과했어요!`
+        : level === 'warn'
+        ? `⚠️ 예산의 ${pct}%를 썼어요. ${won(remain)}원 남음.`
+        : `✅ 예산까지 ${won(remain)}원 여유 있어요.`;
+
+      const save = () => {
+        const v = Math.max(0, Number(draft) || 0);
+        setBudget(v); localStorage.setItem('ledger_budget', String(v)); setEditing(false);
+      };
+
+      return (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-slate-700">이번 달 예산 ({ym})</h2>
+            {editing ? (
+              <div className="flex gap-1.5">
+                <input type="number" value={draft} onChange={(e) => setDraft(e.target.value)}
+                  className="w-32 px-2 py-1 text-sm border border-slate-300 rounded-lg" />
+                <button onClick={save} className="px-2.5 py-1 text-xs font-medium bg-slate-900 text-white rounded-lg">저장</button>
+              </div>
+            ) : (
+              <button onClick={() => { setDraft(budget); setEditing(true); }}
+                className="text-xs text-slate-500 hover:text-slate-800">예산 수정</button>
+            )}
+          </div>
+          <div className="flex justify-between text-sm mb-1.5">
+            <span className="text-slate-500">지출 {won(monthExpense)}원</span>
+            <span className="text-slate-400">예산 {won(budget)}원 · {pct}%</span>
+          </div>
+          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+          <p className={`mt-2 text-sm font-medium ${level === 'over' ? 'text-rose-600' : level === 'warn' ? 'text-amber-600' : 'text-emerald-600'}`}>{msg}</p>
+        </Card>
+      );
+    }
+
+    function App() {
+      const [summary, setSummary] = useState(null);
+      const [transactions, setTransactions] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const [summaryData, txData] = await Promise.all([
+            api('/summary'),
+            api('/transactions'),
+          ]);
+          setSummary(summaryData);
+          setTransactions(Array.isArray(txData) ? txData : (txData?.items || []));
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const handleDelete = async (id) => {
+        await api(`/transactions/${id}`, { method: 'DELETE' });
+        await load();
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10">
+          <header className="mb-6">
+            <h1 className="text-2xl font-bold text-slate-900">💰 가계부</h1>
+            <p className="text-sm text-slate-400 mt-1">수입과 지출을 한눈에 관리하세요.</p>
+          </header>
+
+          <div className="space-y-5">
+            <SummaryCards summary={summary} loading={loading} />
+
+            <BudgetCard transactions={transactions} />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <TransactionForm onCreated={load} />
+              <CategoryChart
+                byCategory={summary?.byCategory}
+                loading={loading}
+                error={error}
+                onRetry={load}
+              />
+            </div>
+
+            <TransactionList
+              items={transactions}
+              loading={loading}
+              error={error}
+              onRetry={load}
+              onDelete={handleDelete}
+            />
+          </div>
+
+          <footer className="mt-10 text-center text-xs text-slate-300">
+            가계부 앱 · React + Tailwind (CDN)
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 렌더링
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

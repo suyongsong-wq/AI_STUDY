@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>커뮤니티 게시판</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18.3.1 / ReactDOM 18.3.1 -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+
+  <!-- Babel standalone: 반드시 7.23.5 핀 (최신은 text/babel 변환 버그로 흰 화면) -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+
+  <!-- supabase-js v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* Tailwind으로 표현하기 어려운 애니메이션만 별도 정의 */
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.35); }
+      100% { transform: scale(1); }
+    }
+    .heart-pop { animation: pop 0.28s ease-out; }
+  </style>
+</head>
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks
+    // ========================================
+    const { useState, useEffect, useCallback, useMemo, createContext, useContext } = React;
+
+    // ========================================
+    // Supabase Client 초기화
+    //  - 전역 window.supabase(라이브러리)와 createClient 결과 변수명 충돌 주의
+    //  - 라이브러리는 window.supabase, 클라이언트 인스턴스는 sb 로 분리
+    // ========================================
+    const SUPABASE_URL = 'https://ibxhnwovdtnfttfzqpos.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_7RB2j_pC9YcoPG5N1n8uZg_p12ndXjr'; // publishable 키(공개 안전 · RLS가 보안 담당)
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ========================================
+    // 유틸
+    // ========================================
+    function formatDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function friendlyAuthError(msg) {
+      if (!msg) return '알 수 없는 오류가 발생했어요.';
+      const m = msg.toLowerCase();
+      if (m.includes('invalid login credentials')) return '이메일 또는 비밀번호가 올바르지 않아요.';
+      if (m.includes('email not confirmed')) return '메일 인증이 아직 완료되지 않았어요. 받은 메일에서 인증 후 다시 로그인해주세요.';
+      if (m.includes('user already registered') || m.includes('already been registered')) return '이미 가입된 이메일이에요. 로그인해주세요.';
+      if (m.includes('password should be at least')) return '비밀번호는 최소 6자 이상이어야 해요.';
+      if (m.includes('unable to validate email') || m.includes('invalid email')) return '이메일 형식이 올바르지 않아요.';
+      if (m.includes('rate limit')) return '요청이 너무 잦아요. 잠시 후 다시 시도해주세요.';
+      return msg;
+    }
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', disabled, onClick, type = 'button', className = '', children }) {
+      const base = 'inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-400',
+        secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-300',
+        danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 focus:ring-red-300',
+        ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-slate-200',
+      };
+      const sizes = { sm: 'text-xs px-2.5 py-1.5', md: 'text-sm px-4 py-2', lg: 'text-base px-5 py-2.5' };
+      return (
+        <button type={type} disabled={disabled} onClick={onClick}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ type = 'text', label, value, onChange, placeholder, error, disabled, autoComplete }) {
+      return (
+        <label className="block">
+          {label && <span className="block mb-1 text-sm font-medium text-slate-700">{label}</span>}
+          <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            disabled={disabled}
+            autoComplete={autoComplete}
+            className={`w-full px-3 py-2 text-sm rounded-lg border bg-white focus:outline-none focus:ring-2 transition
+              ${error ? 'border-red-300 focus:ring-red-300' : 'border-slate-300 focus:ring-indigo-400'}`}
+          />
+          {error && <span className="block mt-1 text-xs text-red-600">{error}</span>}
+        </label>
+      );
+    }
+
+    function Textarea({ label, value, onChange, placeholder, rows = 4, disabled }) {
+      return (
+        <label className="block">
+          {label && <span className="block mb-1 text-sm font-medium text-slate-700">{label}</span>}
+          <textarea
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            rows={rows}
+            disabled={disabled}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition resize-y"
+          />
+        </label>
+      );
+    }
+
+    function Card({ className = '', children }) {
+      return <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 ${className}`}>{children}</div>;
+    }
+
+    function Spinner({ className = '' }) {
+      return (
+        <svg className={`animate-spin h-5 w-5 ${className}`} viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+        </svg>
+      );
+    }
+
+    function Alert({ type = 'info', children }) {
+      if (!children) return null;
+      const styles = {
+        info: 'bg-blue-50 text-blue-700 border-blue-200',
+        error: 'bg-red-50 text-red-700 border-red-200',
+        success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      };
+      return (
+        <div className={`text-sm rounded-lg border px-3 py-2 ${styles[type]}`} role="alert">
+          {children}
+        </div>
+      );
+    }
+
+    function HeartIcon({ filled }) {
+      return (
+        <svg viewBox="0 0 24 24" className="w-5 h-5"
+          fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round"
+            d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 10-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z" />
+        </svg>
+      );
+    }
+
+    // ========================================
+    // 🔐 Auth Context (세션 전역 관리)
+    // ========================================
+    const AuthContext = createContext(null);
+    const useAuth = () => useContext(AuthContext);
+
+    function AuthProvider({ children }) {
+      const [session, setSession] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+
+      useEffect(() => {
+        // 초기 세션 복원
+        sb.auth.getSession().then(({ data }) => {
+          setSession(data.session);
+          setAuthLoading(false);
+        });
+        // 세션 변화 구독 (로그인/로그아웃/토큰 갱신)
+        const { data: sub } = sb.auth.onAuthStateChange((_event, newSession) => {
+          setSession(newSession);
+        });
+        return () => sub.subscription.unsubscribe();
+      }, []);
+
+      const user = session?.user ?? null;
+      const value = { session, user, authLoading };
+      return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    }
+
+    // ========================================
+    // 📄 인증 화면 (로그인 / 회원가입)
+    // ========================================
+    function AuthPage() {
+      const [mode, setMode] = useState('login'); // 'login' | 'signup'
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [info, setInfo] = useState('');
+
+      const reset = () => { setError(''); setInfo(''); };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        reset();
+        if (!email.trim() || !password) {
+          setError('이메일과 비밀번호를 모두 입력해주세요.');
+          return;
+        }
+        setLoading(true);
+        try {
+          if (mode === 'login') {
+            const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+            if (error) throw error;
+            // 성공 시 onAuthStateChange가 화면 전환 처리
+          } else {
+            const { data, error } = await sb.auth.signUp({ email: email.trim(), password });
+            if (error) throw error;
+            // ★ 이메일 확인이 켜진 경우 session이 없을 수 있음
+            if (data.session) {
+              // 바로 로그인 처리됨 (onAuthStateChange가 전환)
+            } else {
+              setInfo('확인 메일을 보냈어요. 메일 인증을 완료한 뒤 로그인해주세요.');
+              setMode('login');
+              setPassword('');
+            }
+          }
+        } catch (err) {
+          setError(friendlyAuthError(err.message));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white text-2xl mb-3">💬</div>
+              <h1 className="text-2xl font-bold text-slate-800">커뮤니티 게시판</h1>
+              <p className="text-sm text-slate-500 mt-1">로그인하고 이야기를 나눠보세요</p>
+            </div>
+
+            <Card className="p-6">
+              {/* 탭 */}
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg mb-6">
+                {['login', 'signup'].map((m) => (
+                  <button key={m}
+                    onClick={() => { setMode(m); reset(); }}
+                    className={`py-2 text-sm font-medium rounded-md transition
+                      ${mode === m ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                    {m === 'login' ? '로그인' : '회원가입'}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="이메일" type="email" value={email}
+                  onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+                  autoComplete="email" disabled={loading} />
+                <Input label="비밀번호" type="password" value={password}
+                  onChange={(e) => setPassword(e.target.value)} placeholder="6자 이상"
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'} disabled={loading} />
+
+                {error && <Alert type="error">{error}</Alert>}
+                {info && <Alert type="success">{info}</Alert>}
+
+                <Button type="submit" size="lg" disabled={loading} className="w-full">
+                  {loading ? <Spinner className="text-white" /> : (mode === 'login' ? '로그인' : '회원가입')}
+                </Button>
+              </form>
+            </Card>
+
+            <p className="text-center text-xs text-slate-400 mt-6">
+              supabase-js · 프론트엔드 only · RLS 기반 보안
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🧩 Header
+    // ========================================
+    function Header({ email, onLogout, loggingOut }) {
+      return (
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
+          <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">💬</span>
+              <span className="font-bold text-slate-800">커뮤니티 게시판</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:inline text-sm text-slate-500 truncate max-w-[180px]" title={email}>{email}</span>
+              <Button variant="secondary" size="sm" onClick={onLogout} disabled={loggingOut}>
+                {loggingOut ? '로그아웃 중...' : '로그아웃'}
+              </Button>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // 🧩 글 작성 폼
+    // ========================================
+    function PostComposer({ onCreated }) {
+      const { user } = useAuth();
+      const [title, setTitle] = useState('');
+      const [content, setContent] = useState('');
+      const [saving, setSaving] = useState(false);
+      const [error, setError] = useState('');
+      const [open, setOpen] = useState(false);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!title.trim() || !content.trim()) {
+          setError('제목과 내용을 모두 입력해주세요.');
+          return;
+        }
+        setSaving(true);
+        try {
+          const { error } = await sb.from('community_posts').insert({
+            user_id: user.id,
+            author_email: user.email,
+            title: title.trim(),
+            content: content.trim(),
+          });
+          if (error) throw error;
+          setTitle(''); setContent(''); setOpen(false);
+          onCreated && onCreated();
+        } catch (err) {
+          setError('글 작성에 실패했어요: ' + err.message);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      if (!open) {
+        return (
+          <Card className="p-4">
+            <button onClick={() => setOpen(true)}
+              className="w-full text-left text-sm text-slate-400 px-3 py-2 rounded-lg border border-dashed border-slate-300 hover:border-indigo-400 hover:text-indigo-500 transition">
+              ✏️ 새 글을 작성해보세요...
+            </button>
+          </Card>
+        );
+      }
+
+      return (
+        <Card className="p-4">
+          <form onSubmit={submit} className="space-y-3">
+            <Input label="제목" value={title} onChange={(e) => setTitle(e.target.value)}
+              placeholder="제목을 입력하세요" disabled={saving} />
+            <Textarea label="내용" value={content} onChange={(e) => setContent(e.target.value)}
+              placeholder="내용을 입력하세요" rows={4} disabled={saving} />
+            {error && <Alert type="error">{error}</Alert>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => { setOpen(false); setError(''); }} disabled={saving}>취소</Button>
+              <Button type="submit" disabled={saving}>{saving ? '등록 중...' : '등록'}</Button>
+            </div>
+          </form>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🧩 글 카드 (좋아요 · 수정 · 삭제)
+    // ========================================
+    function PostCard({ post, mine, likeCount, likedByMe, onToggleLike, onUpdated, onDeleted }) {
+      const [editing, setEditing] = useState(false);
+      const [title, setTitle] = useState(post.title);
+      const [content, setContent] = useState(post.content);
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+      const [animate, setAnimate] = useState(false);
+
+      const saveEdit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!title.trim() || !content.trim()) { setError('제목과 내용을 입력해주세요.'); return; }
+        setBusy(true);
+        try {
+          const { error } = await sb.from('community_posts')
+            .update({ title: title.trim(), content: content.trim() })
+            .eq('id', post.id);
+          if (error) throw error;
+          setEditing(false);
+          onUpdated && onUpdated();
+        } catch (err) {
+          setError('수정 실패: ' + err.message);
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      const remove = async () => {
+        if (!window.confirm('이 글을 삭제할까요?')) return;
+        setBusy(true);
+        try {
+          const { error } = await sb.from('community_posts').delete().eq('id', post.id);
+          if (error) throw error;
+          onDeleted && onDeleted();
+        } catch (err) {
+          alert('삭제 실패: ' + err.message);
+          setBusy(false);
+        }
+      };
+
+      const handleLike = () => {
+        setAnimate(true);
+        setTimeout(() => setAnimate(false), 300);
+        onToggleLike(post.id, likedByMe);
+      };
+
+      if (editing) {
+        return (
+          <Card className="p-4">
+            <form onSubmit={saveEdit} className="space-y-3">
+              <Input label="제목" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+              <Textarea label="내용" value={content} onChange={(e) => setContent(e.target.value)} rows={4} disabled={busy} />
+              {error && <Alert type="error">{error}</Alert>}
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => { setEditing(false); setTitle(post.title); setContent(post.content); setError(''); }} disabled={busy}>취소</Button>
+                <Button type="submit" disabled={busy}>{busy ? '저장 중...' : '저장'}</Button>
+              </div>
+            </form>
+          </Card>
+        );
+      }
+
+      return (
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-semibold text-slate-800 break-words">{post.title}</h3>
+              <div className="mt-0.5 text-xs text-slate-400 flex items-center gap-1.5 flex-wrap">
+                <span className="font-medium text-slate-500">{post.author_email}</span>
+                <span>·</span>
+                <span>{formatDate(post.created_at)}</span>
+                {mine && <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-500 text-[10px] font-medium">내 글</span>}
+              </div>
+            </div>
+            {mine && (
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => setEditing(true)} disabled={busy}>수정</Button>
+                <Button variant="danger" size="sm" onClick={remove} disabled={busy}>삭제</Button>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap break-words">{post.content}</p>
+
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <button onClick={handleLike}
+              aria-pressed={likedByMe}
+              aria-label={likedByMe ? '좋아요 취소' : '좋아요'}
+              className={`inline-flex items-center gap-1.5 text-sm font-medium rounded-full px-3 py-1.5 transition
+                ${likedByMe ? 'bg-red-50 text-red-500' : 'text-slate-400 hover:bg-slate-100 hover:text-red-400'}`}>
+              <span className={animate ? 'heart-pop' : ''}><HeartIcon filled={likedByMe} /></span>
+              <span>{likeCount}</span>
+            </button>
+          </div>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 📄 게시판 (목록 · 좋아요 집계 · 정렬)
+    // ========================================
+    function BoardPage() {
+      const { user } = useAuth();
+      const [posts, setPosts] = useState([]);
+      const [likeMap, setLikeMap] = useState({});   // postId -> count
+      const [myLikes, setMyLikes] = useState({});   // postId -> true
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const [sort, setSort] = useState('latest');   // 'latest' | 'popular'
+
+      const loadAll = useCallback(async () => {
+        setError('');
+        try {
+          // 글 목록 (최신순 기본)
+          const { data: postData, error: postErr } = await sb
+            .from('community_posts')
+            .select('id, user_id, author_email, title, content, created_at')
+            .order('created_at', { ascending: false });
+          if (postErr) throw postErr;
+
+          // 좋아요 전체 조회 후 post별 카운트 + 내가 누른 것 계산
+          const { data: likeData, error: likeErr } = await sb
+            .from('community_likes')
+            .select('post_id, user_id');
+          if (likeErr) throw likeErr;
+
+          const counts = {};
+          const mine = {};
+          (likeData || []).forEach((l) => {
+            counts[l.post_id] = (counts[l.post_id] || 0) + 1;
+            if (l.user_id === user.id) mine[l.post_id] = true;
+          });
+
+          setPosts(postData || []);
+          setLikeMap(counts);
+          setMyLikes(mine);
+        } catch (err) {
+          setError('데이터를 불러오지 못했어요: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, [user.id]);
+
+      useEffect(() => { loadAll(); }, [loadAll]);
+
+      // 좋아요 토글 (낙관적 업데이트 후 서버 반영)
+      const toggleLike = useCallback(async (postId, liked) => {
+        // optimistic
+        setMyLikes((prev) => {
+          const next = { ...prev };
+          if (liked) delete next[postId]; else next[postId] = true;
+          return next;
+        });
+        setLikeMap((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + (liked ? -1 : 1) }));
+
+        try {
+          if (liked) {
+            const { error } = await sb.from('community_likes')
+              .delete().eq('post_id', postId).eq('user_id', user.id);
+            if (error) throw error;
+          } else {
+            const { error } = await sb.from('community_likes')
+              .insert({ post_id: postId, user_id: user.id });
+            if (error) throw error;
+          }
+        } catch (err) {
+          // 실패 시 롤백 겸 재동기화
+          alert('좋아요 처리에 실패했어요: ' + err.message);
+          loadAll();
+        }
+      }, [user.id, loadAll]);
+
+      const sortedPosts = useMemo(() => {
+        const arr = [...posts];
+        if (sort === 'popular') {
+          arr.sort((a, b) => {
+            const diff = (likeMap[b.id] || 0) - (likeMap[a.id] || 0);
+            if (diff !== 0) return diff;
+            return new Date(b.created_at) - new Date(a.created_at);
+          });
+        } else {
+          arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+        return arr;
+      }, [posts, likeMap, sort]);
+
+      return (
+        <main className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+          <PostComposer onCreated={loadAll} />
+
+          {/* 정렬 토글 */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-400">
+              {loading ? '불러오는 중...' : `총 ${posts.length}개의 글`}
+            </span>
+            <div className="flex p-1 bg-slate-100 rounded-lg text-sm">
+              {[['latest', '최신순'], ['popular', '인기순']].map(([key, label]) => (
+                <button key={key} onClick={() => setSort(key)}
+                  className={`px-3 py-1 rounded-md font-medium transition
+                    ${sort === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && <Alert type="error">{error}</Alert>}
+
+          {/* 로딩 */}
+          {loading && (
+            <div className="flex justify-center py-16 text-indigo-500"><Spinner className="h-8 w-8" /></div>
+          )}
+
+          {/* 빈 상태 */}
+          {!loading && !error && posts.length === 0 && (
+            <Card className="p-12 text-center">
+              <div className="text-4xl mb-3">📝</div>
+              <p className="text-slate-500 font-medium">아직 작성된 글이 없어요</p>
+              <p className="text-sm text-slate-400 mt-1">첫 번째 글의 주인공이 되어보세요!</p>
+            </Card>
+          )}
+
+          {/* 목록 */}
+          {!loading && sortedPosts.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              mine={post.user_id === user.id}
+              likeCount={likeMap[post.id] || 0}
+              likedByMe={!!myLikes[post.id]}
+              onToggleLike={toggleLike}
+              onUpdated={loadAll}
+              onDeleted={loadAll}
+            />
+          ))}
+        </main>
+      );
+    }
+
+    // ========================================
+    // 🚀 App
+    // ========================================
+    function Shell() {
+      const { user, authLoading } = useAuth();
+      const [loggingOut, setLoggingOut] = useState(false);
+
+      const logout = async () => {
+        setLoggingOut(true);
+        await sb.auth.signOut();
+        setLoggingOut(false);
+      };
+
+      if (authLoading) {
+        return (
+          <div className="min-h-screen flex items-center justify-center text-indigo-500">
+            <Spinner className="h-8 w-8" />
+          </div>
+        );
+      }
+
+      if (!user) return <AuthPage />;
+
+      return (
+        <div className="min-h-screen">
+          <Header email={user.email} onLogout={logout} loggingOut={loggingOut} />
+          <BoardPage />
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <AuthProvider>
+          <Shell />
+        </AuthProvider>
+      );
+    }
+
+    // ========================================
+    // Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
