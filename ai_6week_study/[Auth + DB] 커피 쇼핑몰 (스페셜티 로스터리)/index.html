@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ember Roasters® — Specialty Coffee / Experiment Space</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink:   '#0b0a09',
+            panel: '#111010',
+            paper: '#ece6dc',
+            ember: '#ff5a1f',
+            muted: '#8b8178',
+          },
+          fontFamily: {
+            sans: ['Space Grotesk', 'Apple SD Gothic Neo', 'Pretendard', 'system-ui', 'sans-serif'],
+            mono: ['Space Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    html { -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Space Grotesk', 'Apple SD Gothic Neo', 'Pretendard', system-ui, sans-serif; background: #0b0a09; }
+    ::selection { background: #ff5a1f; color: #0b0a09; }
+
+    /* 필름 그레인 오버레이 */
+    .grain {
+      position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: .045;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    /* 상단 비네트 */
+    .vignette { position: fixed; inset: 0; z-index: 55; pointer-events: none;
+      background: radial-gradient(120% 80% at 50% -10%, rgba(255,90,31,.10), transparent 60%); }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn .35s cubic-bezier(.2,.7,.2,1) both; }
+
+    @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    .marquee { display: inline-flex; white-space: nowrap; animation: marquee 26s linear infinite; }
+
+    /* 다크 스크롤바 */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #0b0a09; }
+    ::-webkit-scrollbar-thumb { background: #2a2724; border: 2px solid #0b0a09; }
+    ::-webkit-scrollbar-thumb:hover { background: #ff5a1f; }
+  </style>
+</head>
+<body class="bg-ink text-paper">
+  <div class="grain"></div>
+  <div class="vignette"></div>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } = React;
+
+    // ========================================
+    // ⚙️ Supabase 클라이언트 초기화
+    // ========================================
+    const SUPABASE_URL = 'https://ibxhnwovdtnfttfzqpos.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_7RB2j_pC9YcoPG5N1n8uZg_p12ndXjr'; // publishable, 공개 안전 (보안은 RLS가 담당)
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const FREE_SHIPPING_THRESHOLD = 30000;
+    const won = (n) => '₩' + (n ?? 0).toLocaleString('ko-KR');
+    const pad2 = (n) => String(n + 1).padStart(2, '0');
+    const orderNo = (id = '') => '#' + id.slice(0, 8).toUpperCase();
+    const fmtDate = (ts) => new Date(ts).toLocaleString('ko-KR',
+      { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const fmtDay = (ts) => ts ? new Date(ts).toLocaleDateString('ko-KR',
+      { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—';
+
+    // ========================================
+    // 🖼️ ImageKit 업로드 (서명은 서버에서, Private Key 미노출)
+    // ========================================
+    async function uploadImage(file) {
+      const [cfgRes, authRes] = await Promise.all([
+        fetch('/api/imagekit/config'),
+        fetch('/api/imagekit/auth', { method: 'POST' }),
+      ]);
+      if (!cfgRes.ok) throw new Error((await cfgRes.json().catch(() => ({}))).error || '이미지 서버 설정을 불러오지 못했어요.');
+      if (!authRes.ok) throw new Error((await authRes.json().catch(() => ({}))).error || '업로드 서명 발급에 실패했어요.');
+      const cfg = await cfgRes.json();
+      const auth = await authRes.json();
+
+      const form = new FormData();
+      form.append('file', file);
+      form.append('fileName', file.name);
+      form.append('publicKey', cfg.publicKey);
+      form.append('signature', auth.signature);
+      form.append('expire', auth.expire);
+      form.append('token', auth.token);
+      form.append('folder', '/ember-roasters');
+
+      const res = await fetch('https://upload.imagekit.io/api/v1/files/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || '이미지 업로드에 실패했어요.');
+      return data.url; // ImageKit CDN URL
+    }
+
+    // ========================================
+    // 🎨 Design System — Experiment Space (Obys tone)
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', disabled, onClick, type = 'button', className = '', children }) {
+      const base = 'inline-flex items-center justify-center gap-2 font-mono uppercase tracking-[0.15em] transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none';
+      const sizes = { sm: 'px-3 py-2 text-[11px]', md: 'px-4 py-2.5 text-xs', lg: 'px-6 py-3.5 text-xs' };
+      const variants = {
+        primary: 'bg-ember text-ink hover:bg-paper',
+        secondary: 'border border-white/25 text-paper hover:border-ember hover:text-ember',
+        danger: 'border border-white/15 text-muted hover:border-ember hover:text-ember',
+        ghost: 'text-muted hover:text-paper',
+      };
+      return (
+        <button type={type} disabled={disabled} onClick={onClick}
+          className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, type = 'text', value, onChange, placeholder, error, disabled, autoComplete }) {
+      return (
+        <label className="block">
+          {label && <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">{label}</span>}
+          <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+            disabled={disabled} autoComplete={autoComplete}
+            className={`w-full px-0 py-2 bg-transparent border-b text-paper placeholder-white/25 focus:outline-none transition-colors
+              ${error ? 'border-ember' : 'border-white/20 focus:border-ember'}`} />
+          {error && <span className="block mt-1.5 font-mono text-[11px] text-ember">{error}</span>}
+        </label>
+      );
+    }
+
+    function Badge({ children, className = '' }) {
+      return <span className={`inline-block px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] ${className}`}>{children}</span>;
+    }
+
+    function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+      if (!isOpen) return null;
+      const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+          <div className={`w-full ${sizes[size]} bg-panel border border-white/12 p-6 animate-fade-in`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-mono text-xs uppercase tracking-[0.2em] text-muted">{title}</h3>
+              <button onClick={onClose} className="text-muted hover:text-ember text-xl leading-none transition-colors" aria-label="닫기">✕</button>
+            </div>
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    function Spinner({ className = '' }) {
+      return (
+        <svg className={`animate-spin h-4 w-4 ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+          <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+      );
+    }
+
+    // ========================================
+    // 🫘 상품 이미지 (onError 폴백)
+    // ========================================
+    const PRODUCT_VISUALS = [
+      { kw: '예가체프', emoji: '🌸' }, { kw: '콜롬비아', emoji: '🍫' }, { kw: '케냐', emoji: '🍷' },
+      { kw: '과테말라', emoji: '🌰' }, { kw: '브라질', emoji: '🥜' }, { kw: '에스프레소', emoji: '⚡' },
+      { kw: '디카페인', emoji: '🌙' }, { kw: '드립백', emoji: '💧' }, { kw: '블렌드', emoji: '☕' },
+    ];
+    const pickVisual = (name = '') =>
+      PRODUCT_VISUALS.find((v) => name.includes(v.kw)) || { emoji: '☕' };
+
+    function ProductImage({ src, alt, className = '' }) {
+      const [failed, setFailed] = useState(false);
+      const { emoji } = pickVisual(alt);
+      if (failed || !src) {
+        return (
+          <div className={`flex items-center justify-center bg-[#1a1815] ${className}`}>
+            <span className="text-4xl grayscale opacity-70" role="img" aria-label={alt}>{emoji}</span>
+          </div>
+        );
+      }
+      return <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`object-cover ${className}`} />;
+    }
+
+    // ========================================
+    // 🔐 Auth Context (세션 유지)
+    // ========================================
+    const AuthContext = createContext(null);
+    const useAuth = () => useContext(AuthContext);
+
+    function AuthProvider({ children }) {
+      const [user, setUser] = useState(null);
+      const [ready, setReady] = useState(false);
+
+      useEffect(() => {
+        sb.auth.getSession().then(({ data }) => {
+          setUser(data.session?.user ?? null);
+          setReady(true);
+        });
+        const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+          setUser(session?.user ?? null);
+        });
+        return () => sub.subscription.unsubscribe();
+      }, []);
+
+      return <AuthContext.Provider value={{ user, ready }}>{children}</AuthContext.Provider>;
+    }
+
+    // ========================================
+    // 🔑 인증 모달 (회원가입 / 로그인)
+    // ========================================
+    function AuthModal({ isOpen, onClose }) {
+      const [mode, setMode] = useState('login');
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [notice, setNotice] = useState('');
+
+      const reset = () => { setEmail(''); setPassword(''); setError(''); setNotice(''); };
+      const close = () => { reset(); onClose(); };
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError(''); setNotice('');
+        if (!email || !password) { setError('이메일과 비밀번호를 입력해 주세요.'); return; }
+        if (mode === 'signup' && password.length < 6) { setError('비밀번호는 6자 이상이어야 해요.'); return; }
+        setLoading(true);
+        try {
+          if (mode === 'signup') {
+            const { data, error } = await sb.auth.signUp({ email, password });
+            if (error) throw error;
+            if (!data.session) {
+              setNotice('확인 메일을 보냈어요. 메일함에서 인증 후 로그인해 주세요.');
+            } else {
+              close();
+            }
+          } else {
+            const { error } = await sb.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            close();
+          }
+        } catch (err) {
+          setError(translateAuthError(err.message));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const switchMode = (m) => { setMode(m); setError(''); setNotice(''); };
+
+      return (
+        <Modal isOpen={isOpen} onClose={close} title={mode === 'login' ? 'Access / 로그인' : 'Register / 회원가입'} size="sm">
+          <div className="flex mb-6 border border-white/12">
+            <button onClick={() => switchMode('login')}
+              className={`flex-1 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${mode === 'login' ? 'bg-ember text-ink' : 'text-muted hover:text-paper'}`}>로그인</button>
+            <button onClick={() => switchMode('signup')}
+              className={`flex-1 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${mode === 'signup' ? 'bg-ember text-ink' : 'text-muted hover:text-paper'}`}>회원가입</button>
+          </div>
+          <form onSubmit={submit} className="space-y-5">
+            <Input label="Email / 이메일" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com" autoComplete="email" />
+            <Input label="Password / 비밀번호" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="6자 이상" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
+            {error && <p className="font-mono text-[11px] text-ember border-l-2 border-ember pl-3 py-1">{error}</p>}
+            {notice && <p className="font-mono text-[11px] text-paper border-l-2 border-white/30 pl-3 py-1">{notice}</p>}
+            <Button type="submit" size="lg" disabled={loading} className="w-full">
+              {loading ? <Spinner /> : (mode === 'login' ? '→ 로그인' : '→ 가입하기')}
+            </Button>
+          </form>
+        </Modal>
+      );
+    }
+
+    function translateAuthError(msg = '') {
+      if (/Invalid login credentials/i.test(msg)) return '이메일 또는 비밀번호가 올바르지 않아요.';
+      if (/already registered|already exists/i.test(msg)) return '이미 가입된 이메일이에요. 로그인해 주세요.';
+      if (/Email not confirmed/i.test(msg)) return '이메일 인증이 필요해요. 메일함을 확인해 주세요.';
+      if (/rate limit/i.test(msg)) return '요청이 많아요. 잠시 후 다시 시도해 주세요.';
+      return msg || '문제가 발생했어요. 다시 시도해 주세요.';
+    }
+
+    // ========================================
+    // 🛠️ 관리자 상품 등록 (이미지 업로드 → DB 저장)
+    // ========================================
+    const CATEGORY_OPTIONS = ['싱글오리진', '블렌드', '드립백'];
+    const ROAST_OPTIONS = ['라이트', '미디엄', '다크'];
+
+    function AdminModal({ isOpen, onClose, onCreated }) {
+      const [name, setName] = useState('');
+      const [price, setPrice] = useState('');
+      const [category, setCategory] = useState(CATEGORY_OPTIONS[0]);
+      const [origin, setOrigin] = useState('');
+      const [roast, setRoast] = useState(ROAST_OPTIONS[1]);
+      const [description, setDescription] = useState('');
+      const [file, setFile] = useState(null);
+      const [preview, setPreview] = useState('');
+      const [dragOver, setDragOver] = useState(false);
+      const [step, setStep] = useState('');   // '', 'upload', 'save'
+      const [error, setError] = useState('');
+
+      const busy = step !== '';
+
+      const reset = () => {
+        setName(''); setPrice(''); setCategory(CATEGORY_OPTIONS[0]); setOrigin('');
+        setRoast(ROAST_OPTIONS[1]); setDescription(''); setError(''); setStep('');
+        if (preview) URL.revokeObjectURL(preview);
+        setFile(null); setPreview('');
+      };
+      const close = () => { reset(); onClose(); };
+
+      const pickFile = (f) => {
+        if (!f) return;
+        if (!f.type.startsWith('image/')) { setError('이미지 파일만 올릴 수 있어요.'); return; }
+        setError('');
+        if (preview) URL.revokeObjectURL(preview);
+        setFile(f);
+        setPreview(URL.createObjectURL(f));
+      };
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!name.trim()) { setError('상품명을 입력해 주세요.'); return; }
+        if (!price || Number(price) <= 0) { setError('가격을 올바르게 입력해 주세요.'); return; }
+        if (!file) { setError('상품 이미지를 첨부해 주세요.'); return; }
+        try {
+          setStep('upload');
+          const imageUrl = await uploadImage(file);
+          setStep('save');
+          const { data, error } = await sb.from('coffee_products').insert({
+            name: name.trim(),
+            price: Number(price),
+            category,
+            origin: origin.trim() || null,
+            roast,
+            description: description.trim() || null,
+            image_url: imageUrl,
+          }).select().single();
+          if (error) throw error;
+          onCreated(data);
+          close();
+        } catch (err) {
+          setError(err.message || '등록에 실패했어요.');
+          setStep('');
+        }
+      };
+
+      if (!isOpen) return null;
+      return (
+        <Modal isOpen={isOpen} onClose={close} title="Admin / 상품 등록" size="lg">
+          <form onSubmit={submit} className="space-y-5">
+            {/* 이미지 드롭존 */}
+            <div>
+              <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Image / 상품 이미지</span>
+              <label
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]); }}
+                className={`relative flex items-center justify-center h-44 border border-dashed cursor-pointer transition-colors overflow-hidden
+                  ${dragOver ? 'border-ember bg-ember/5' : 'border-white/20 hover:border-white/40'}`}>
+                {preview ? (
+                  <img src={preview} alt="미리보기" className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center font-mono text-[11px] uppercase tracking-[0.15em] text-muted">
+                    <div className="text-2xl mb-2 text-white/20">↑</div>
+                    드래그앤드롭 · 클릭해서 선택
+                  </div>
+                )}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={(e) => pickFile(e.target.files[0])} disabled={busy} />
+              </label>
+              {preview && <p className="mt-2 font-mono text-[10px] text-muted truncate">{file?.name}</p>}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Input label="Name / 상품명" value={name} onChange={(e) => setName(e.target.value)} placeholder="에티오피아 예가체프" />
+              <Input label="Price / 가격 (원)" type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="18000" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <label className="block">
+                <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Category / 카테고리</span>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-0 py-2 bg-transparent border-b border-white/20 text-paper focus:outline-none focus:border-ember">
+                  {CATEGORY_OPTIONS.map((c) => <option key={c} value={c} className="bg-panel text-paper">{c}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Roast / 로스팅</span>
+                <select value={roast} onChange={(e) => setRoast(e.target.value)}
+                  className="w-full px-0 py-2 bg-transparent border-b border-white/20 text-paper focus:outline-none focus:border-ember">
+                  {ROAST_OPTIONS.map((r) => <option key={r} value={r} className="bg-panel text-paper">{r}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <Input label="Origin / 원산지" value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="에티오피아 예가체프" />
+
+            <label className="block">
+              <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Description / 설명</span>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
+                placeholder="자스민과 베르가못의 화사한 향…"
+                className="w-full px-0 py-2 bg-transparent border-b border-white/20 text-paper placeholder-white/25 focus:outline-none focus:border-ember resize-none" />
+            </label>
+
+            {error && <p className="font-mono text-[11px] text-ember border-l-2 border-ember pl-3 py-1">{error}</p>}
+
+            <Button type="submit" size="lg" disabled={busy} className="w-full">
+              {step === 'upload' ? <><Spinner className="h-4 w-4" /> 이미지 업로드 중…</>
+                : step === 'save' ? <><Spinner className="h-4 w-4" /> 저장 중…</>
+                : '→ 상품 등록'}
+            </Button>
+          </form>
+        </Modal>
+      );
+    }
+
+    // ========================================
+    // 🧩 Header
+    // ========================================
+    function Header({ user, cartCount, onOpenAuth, onLogout, onOpenCart, onOpenAdmin, onOpenMyPage }) {
+      return (
+        <header className="sticky top-0 z-30 bg-ink/85 backdrop-blur border-b border-white/12">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-paper">EMBER ROASTERS</h1>
+              <span className="text-ember text-lg leading-none">®</span>
+            </div>
+            <div className="flex items-center gap-3 sm:gap-5">
+              {user ? (
+                <>
+                  <button onClick={onOpenAdmin}
+                    className="hidden sm:inline font-mono text-[11px] uppercase tracking-[0.15em] text-muted hover:text-ember transition-colors py-2">
+                    + 상품등록
+                  </button>
+                  <button onClick={onOpenMyPage}
+                    className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted hover:text-ember transition-colors py-2">
+                    마이페이지
+                  </button>
+                  <span className="hidden lg:inline font-mono text-[11px] text-muted max-w-[150px] truncate">{user.email}</span>
+                  <Button variant="ghost" size="sm" onClick={onLogout}>Logout</Button>
+                </>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={onOpenAuth}>Login</Button>
+              )}
+              <button onClick={onOpenCart} aria-label="장바구니"
+                className="relative font-mono text-[11px] uppercase tracking-[0.15em] text-paper hover:text-ember transition-colors py-2">
+                Cart
+                <span className="ml-1 text-ember">[{String(cartCount).padStart(2, '0')}]</span>
+              </button>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // 〰️ 마퀴 스트립
+    // ========================================
+    function Marquee() {
+      const items = ['SINGLE ORIGIN', 'BLEND', 'DRIP BAG', 'ROASTED TO ORDER', 'FREE SHIPPING ₩30,000+', 'SPECIALTY GRADE'];
+      const strip = (
+        <span className="marquee">
+          {items.concat(items).map((t, i) => (
+            <span key={i} className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted mx-6">
+              <span className="text-ember mr-6">✳</span>{t}
+            </span>
+          ))}
+        </span>
+      );
+      return (
+        <div className="border-b border-white/12 py-3 overflow-hidden whitespace-nowrap">
+          {strip}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🔎 필터 바 (카테고리 · 검색)
+    // ========================================
+    function FilterBar({ categories, active, onSelect, query, onQuery, count }) {
+      return (
+        <div className="mb-10">
+          <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-muted mb-6">
+            <span>(Index) — 원두 아카이브</span>
+            <span>{String(count).padStart(2, '0')} Items</span>
+          </div>
+          <div className="relative max-w-md mb-6">
+            <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="SEARCH — 이름·원산지로 검색"
+              className="w-full px-0 py-2.5 bg-transparent border-b border-white/20 text-paper placeholder-white/25 font-mono text-sm focus:outline-none focus:border-ember transition-colors" />
+            <span className="absolute right-0 top-1/2 -translate-y-1/2 text-muted font-mono text-xs">↵</span>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            {categories.map((c) => (
+              <button key={c} onClick={() => onSelect(c)}
+                className={`font-mono text-xs uppercase tracking-[0.15em] pb-1 border-b transition-colors
+                  ${active === c ? 'text-ember border-ember' : 'text-muted border-transparent hover:text-paper'}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🫘 상품 카드 & 그리드
+    // ========================================
+    const ROAST_TONE = { '라이트': 'text-amber-300', '미디엄': 'text-orange-400', '다크': 'text-muted' };
+
+    function ProductCard({ product, index, onAdd, adding }) {
+      return (
+        <article className="group relative flex flex-col border-r border-b border-white/12 bg-ink hover:bg-panel transition-colors duration-300 animate-fade-in">
+          <div className="flex items-center justify-between px-5 pt-5">
+            <span className="font-mono text-[11px] text-muted">({pad2(index)})</span>
+            {product.roast && (
+              <span className={`font-mono text-[10px] uppercase tracking-[0.15em] ${ROAST_TONE[product.roast] || 'text-muted'}`}>
+                {product.roast} ROAST
+              </span>
+            )}
+          </div>
+
+          <div className="px-5 pt-4">
+            <div className="relative aspect-[4/3] overflow-hidden">
+              <ProductImage src={product.image_url} alt={product.name}
+                className="w-full h-full grayscale-[.2] group-hover:grayscale-0 group-hover:scale-[1.04] transition duration-700 ease-out" />
+              {product.category && (
+                <span className="absolute left-0 bottom-0 bg-ink/90 backdrop-blur text-paper font-mono text-[10px] uppercase tracking-[0.15em] px-2 py-1">
+                  {product.category}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="px-5 py-5 flex flex-col flex-1">
+            <h3 className="text-xl font-semibold text-paper leading-tight group-hover:text-ember transition-colors duration-300">
+              {product.name}
+            </h3>
+            {product.origin && <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-muted">↳ {product.origin}</p>}
+            <p className="mt-3 text-sm text-muted line-clamp-2 flex-1 leading-relaxed">{product.description || '향 좋은 스페셜티 원두예요.'}</p>
+            <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between">
+              <span className="font-mono text-base text-paper">{won(product.price)}</span>
+              <button onClick={() => onAdd(product)} disabled={adding}
+                className="font-mono text-[11px] uppercase tracking-[0.15em] text-paper hover:text-ember transition-colors disabled:opacity-40 flex items-center gap-1.5">
+                {adding ? <Spinner className="h-3.5 w-3.5" /> : <>담기 <span className="text-ember">→</span></>}
+              </button>
+            </div>
+          </div>
+        </article>
+      );
+    }
+
+    function ProductGrid({ products, onAdd, addingId }) {
+      if (products.length === 0) {
+        return (
+          <div className="text-center py-28 border border-white/12">
+            <div className="font-mono text-xs uppercase tracking-[0.2em] text-muted">No Results — 조건에 맞는 원두가 없어요</div>
+          </div>
+        );
+      }
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 border-t border-l border-white/12">
+          {products.map((p, i) => (
+            <ProductCard key={p.id} product={p} index={i} onAdd={onAdd} adding={addingId === p.id} />
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚚 무료배송 게이지
+    // ========================================
+    function FreeShippingGauge({ total }) {
+      const reached = total >= FREE_SHIPPING_THRESHOLD;
+      const pct = Math.min(100, Math.round((total / FREE_SHIPPING_THRESHOLD) * 100));
+      const remain = FREE_SHIPPING_THRESHOLD - total;
+      return (
+        <div className="border border-white/12 px-4 py-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.15em] mb-2.5">
+            {reached ? (
+              <span className="text-ember">✳ Free Shipping — 무료배송 적용</span>
+            ) : (
+              <span className="text-muted">무료배송까지 <span className="text-paper">{won(remain)}</span></span>
+            )}
+          </p>
+          <div className="h-[3px] bg-white/10 overflow-hidden">
+            <div className="h-full bg-ember transition-all duration-500" style={{ width: pct + '%' }} />
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🛒 장바구니 패널
+    // ========================================
+    function CartItemRow({ item, onQty, onRemove, busy }) {
+      const p = item.product;
+      const sub = (p?.price ?? 0) * item.quantity;
+      return (
+        <div className="flex gap-4 py-4">
+          <ProductImage src={p?.image_url} alt={p?.name} className="w-16 h-16 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-paper truncate">{p?.name || '삭제된 상품'}</p>
+            <p className="font-mono text-[11px] text-muted mt-0.5">{won(p?.price)}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <button onClick={() => onQty(item, item.quantity - 1)} disabled={busy}
+                className="w-7 h-7 border border-white/20 hover:border-ember hover:text-ember text-muted font-mono disabled:opacity-40 transition-colors" aria-label="수량 감소">−</button>
+              <span className="w-7 text-center font-mono text-sm text-paper">{String(item.quantity).padStart(2, '0')}</span>
+              <button onClick={() => onQty(item, item.quantity + 1)} disabled={busy}
+                className="w-7 h-7 border border-white/20 hover:border-ember hover:text-ember text-muted font-mono disabled:opacity-40 transition-colors" aria-label="수량 증가">+</button>
+            </div>
+          </div>
+          <div className="text-right flex flex-col justify-between items-end">
+            <span className="font-mono text-sm text-paper">{won(sub)}</span>
+            <button onClick={() => onRemove(item)} disabled={busy} className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted hover:text-ember transition-colors">Remove</button>
+          </div>
+        </div>
+      );
+    }
+
+    function CartPanel({ isOpen, onClose, user, items, loading, error, onQty, onRemove, busyId, onCheckout, checkingOut }) {
+      const total = useMemo(() => items.reduce((s, it) => s + (it.product?.price ?? 0) * it.quantity, 0), [items]);
+
+      return (
+        <div className={`fixed inset-0 z-40 ${isOpen ? '' : 'pointer-events-none'}`} aria-hidden={!isOpen}>
+          <div className={`absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} />
+          <aside className={`absolute right-0 top-0 h-full w-full max-w-md bg-ink border-l border-white/12 flex flex-col transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="flex items-center justify-between px-6 h-16 border-b border-white/12 flex-shrink-0">
+              <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-paper">Cart / 장바구니</h2>
+              <button onClick={onClose} className="text-muted hover:text-ember text-xl transition-colors" aria-label="닫기">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6">
+              {!user ? (
+                <EmptyHint code="401" text="로그인하면 장바구니를 사용할 수 있어요." />
+              ) : loading ? (
+                <div className="flex justify-center py-24 text-ember"><Spinner className="h-6 w-6" /></div>
+              ) : error ? (
+                <EmptyHint code="ERR" text={error} />
+              ) : items.length === 0 ? (
+                <EmptyHint code="000" text="장바구니가 비어 있어요. 마음에 드는 원두를 담아보세요." />
+              ) : (
+                <div className="divide-y divide-white/10">
+                  {items.map((it) => (
+                    <CartItemRow key={it.id} item={it} onQty={onQty} onRemove={onRemove} busy={busyId === it.id} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {user && items.length > 0 && (
+              <div className="border-t border-white/12 p-6 space-y-4 flex-shrink-0">
+                <FreeShippingGauge total={total} />
+                <div className="flex items-baseline justify-between">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">Total / 합계</span>
+                  <span className="font-mono text-xl text-paper">{won(total)}</span>
+                </div>
+                <Button size="lg" className="w-full" onClick={onCheckout} disabled={checkingOut}>
+                  {checkingOut ? <><Spinner className="h-4 w-4" /> 주문 처리 중…</> : '→ 주문하기'}
+                </Button>
+              </div>
+            )}
+          </aside>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 👤 마이페이지 — 주문 내역 (본인만)
+    // ========================================
+    const ORDER_STATUS = { paid: '결제완료', pending: '결제대기', cancelled: '취소됨' };
+
+    function OrderCard({ order }) {
+      const items = order.items || [];
+      return (
+        <div className="border border-white/12 p-5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-sm text-ember">{orderNo(order.id)}</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted border border-white/15 px-2 py-0.5">
+              {ORDER_STATUS[order.status] || order.status}
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-muted">{fmtDate(order.paid_at)}</p>
+
+          <div className="mt-4 divide-y divide-white/10 border-t border-white/10">
+            {items.map((it) => (
+              <div key={it.id} className="flex items-center justify-between py-2.5 gap-3">
+                <span className="text-paper text-sm truncate">{it.product_name}</span>
+                <span className="font-mono text-[11px] text-muted whitespace-nowrap">
+                  {won(it.price)} × {it.quantity} = <span className="text-paper">{won(it.price * it.quantity)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-white/12 flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Total</span>
+            <span className="font-mono text-base text-paper">{won(order.total_price)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 💳 결제 (토스페이먼츠 위젯 v2)
+    // ========================================
+    function CheckoutModal({ isOpen, onClose, user, items, total }) {
+      const [ready, setReady] = useState(false);
+      const [error, setError] = useState('');
+      const [requesting, setRequesting] = useState(false);
+      const paymentRef = useRef(null);
+
+      useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        (async () => {
+          try {
+            setReady(false); setError('');
+            if (typeof TossPayments === 'undefined') throw new Error('토스 SDK 로드 실패 (네트워크 확인)');
+            const res = await fetch('/api/toss/config');
+            const cfg = await res.json();
+            if (!res.ok || !cfg.clientKey) throw new Error(cfg.error || '토스 클라이언트 키가 없어요.');
+
+            const toss = TossPayments(cfg.clientKey);
+            // 결제창(API 개별 연동 키) 방식 — 위젯 전용 키 없이 동작
+            paymentRef.current = toss.payment({ customerKey: TossPayments.ANONYMOUS });
+            if (!cancelled) setReady(true);
+          } catch (e) {
+            if (!cancelled) setError(e.message || '결제를 초기화하지 못했어요.');
+          }
+        })();
+        return () => { cancelled = true; };
+      }, [isOpen]);
+
+      const pay = async () => {
+        if (!paymentRef.current) return;
+        setRequesting(true); setError('');
+        try {
+          const orderId = 'EMBER_' + crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+          const first = items[0]?.product?.name || '커피 원두';
+          const orderName = items.length > 1 ? `${first} 외 ${items.length - 1}건` : first;
+          // 리다이렉트 후 주문 생성을 위해 장바구니 스냅샷 저장
+          sessionStorage.setItem('ember_pending_items', JSON.stringify(items.map((it) => ({
+            product_id: it.product?.id ?? it.product_id,
+            product_name: it.product?.name ?? '상품',
+            price: it.product?.price ?? 0,
+            quantity: it.quantity,
+          }))));
+          const base = window.location.origin + window.location.pathname;
+          await paymentRef.current.requestPayment({
+            method: 'CARD',
+            amount: { currency: 'KRW', value: total },
+            orderId, orderName,
+            successUrl: base + '?toss=success',
+            failUrl: base + '?toss=fail',
+            customerEmail: user?.email,
+            card: { useEscrow: false, flowMode: 'DEFAULT', useCardPoint: false, useAppCardOnly: false },
+          });
+        } catch (e) {
+          setError(e.message || '결제 요청에 실패했어요.');
+          setRequesting(false);
+        }
+      };
+
+      if (!isOpen) return null;
+      return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Checkout / 결제" size="md">
+          <div className="flex items-baseline justify-between mb-6 pb-4 border-b border-white/12">
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">결제 금액</span>
+            <span className="font-mono text-2xl text-paper">{won(total)}</span>
+          </div>
+
+          <div className="space-y-2 mb-6">
+            {items.map((it) => (
+              <div key={it.id} className="flex items-center justify-between font-mono text-[11px]">
+                <span className="text-muted truncate pr-3">{it.product?.name} × {it.quantity}</span>
+                <span className="text-paper whitespace-nowrap">{won((it.product?.price ?? 0) * it.quantity)}</span>
+              </div>
+            ))}
+          </div>
+
+          {error && <p className="mb-4 font-mono text-[11px] text-ember border-l-2 border-ember pl-3 py-1">{error}</p>}
+
+          <Button size="lg" className="w-full" onClick={pay} disabled={!ready || requesting}>
+            {!ready && !error ? <><Spinner className="h-4 w-4" /> 준비 중…</>
+              : requesting ? <><Spinner className="h-4 w-4" /> 결제창 여는 중…</>
+              : `→ ${won(total)} 카드로 결제하기`}
+          </Button>
+          <p className="mt-3 font-mono text-[10px] text-muted text-center leading-relaxed">
+            카드 결제창이 열립니다 · 테스트 결제라 실제 청구 안 돼요<br />테스트 카드 4330-0000-0000-0005 / 유효기간·비번 아무 값
+          </p>
+        </Modal>
+      );
+    }
+
+    function StatTile({ label, value, sub }) {
+      return (
+        <div className="border border-white/12 p-5">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">{label}</p>
+          <p className="mt-2 font-mono text-2xl text-paper leading-none">{value}</p>
+          {sub && <p className="mt-1.5 font-mono text-[10px] text-muted">{sub}</p>}
+        </div>
+      );
+    }
+
+    function MyPage({ isOpen, onClose, user, orders, loading, onLogout, cartCount }) {
+      if (!isOpen) return null;
+
+      const totalSpent = orders.reduce((s, o) => s + (o.total_price || 0), 0);
+      const totalUnits = orders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.quantity, 0), 0);
+      const initial = (user?.email || '?').trim().charAt(0).toUpperCase();
+
+      return (
+        <div className="fixed inset-0 z-50 bg-ink overflow-y-auto animate-fade-in">
+          {/* 상단 바 */}
+          <div className="sticky top-0 z-10 bg-ink/85 backdrop-blur border-b border-white/12">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-bold tracking-tight text-paper">EMBER ROASTERS</span>
+                <span className="text-ember">®</span>
+              </div>
+              <button onClick={onClose}
+                className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted hover:text-ember transition-colors">
+                ← 쇼핑 계속하기
+              </button>
+            </div>
+          </div>
+
+          <main className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+            <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-muted mb-6">
+              <span>(My Page)</span>
+              <span>Account</span>
+            </div>
+            <h1 className="text-[13vw] sm:text-6xl font-bold tracking-tight leading-none mb-12">마이페이지</h1>
+
+            {/* 프로필 */}
+            <section className="border border-white/12 p-6 flex items-center gap-5 mb-6">
+              <div className="w-16 h-16 flex-shrink-0 bg-ember text-ink flex items-center justify-center text-2xl font-bold">
+                {initial}
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg text-paper truncate">{user?.email}</p>
+                <p className="mt-1 font-mono text-[11px] text-muted">
+                  가입일 {fmtDay(user?.created_at)} · ID {orderNo(user?.id || '')}
+                </p>
+              </div>
+            </section>
+
+            {/* 요약 통계 */}
+            <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-14">
+              <StatTile label="총 주문" value={String(orders.length).padStart(2, '0')} sub="ORDERS" />
+              <StatTile label="총 구매금액" value={won(totalSpent)} sub="TOTAL SPENT" />
+              <StatTile label="누적 원두" value={`${totalUnits}봉`} sub={`장바구니 ${cartCount}개 담김`} />
+            </section>
+
+            {/* 주문 내역 */}
+            <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-muted mb-6 pb-3 border-b border-white/12">
+              <span>(주문 내역) — Order History</span>
+              <span>{String(orders.length).padStart(2, '0')} Orders</span>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-24 text-ember"><Spinner className="h-6 w-6" /></div>
+            ) : orders.length === 0 ? (
+              <EmptyHint code="000" text="아직 주문 내역이 없어요. 원두를 담아 첫 주문을 해보세요." />
+            ) : (
+              <div className="space-y-4">
+                {orders.map((o) => <OrderCard key={o.id} order={o} />)}
+              </div>
+            )}
+
+            {/* 계정 액션 */}
+            <div className="mt-14 pt-8 border-t border-white/12 flex items-center justify-between">
+              <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted">Account</span>
+              <Button variant="secondary" size="md" onClick={onLogout}>→ 로그아웃</Button>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    function EmptyHint({ code, text }) {
+      return (
+        <div className="text-center py-24">
+          <div className="font-mono text-4xl text-white/10 mb-4">{code}</div>
+          <p className="px-6 font-mono text-[11px] uppercase tracking-[0.1em] text-muted leading-relaxed">{text}</p>
+        </div>
+      );
+    }
+
+    function PaymentToast({ notice, onClose }) {
+      if (!notice) return null;
+      return (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-md animate-fade-in">
+          <div className={`flex items-start gap-3 bg-panel border px-4 py-3 ${notice.ok ? 'border-ember' : 'border-white/30'}`}>
+            <span className={`font-mono text-lg leading-none ${notice.ok ? 'text-ember' : 'text-muted'}`}>{notice.ok ? '✳' : '✕'}</span>
+            <p className="flex-1 text-sm text-paper">{notice.msg}</p>
+            <button onClick={onClose} className="text-muted hover:text-ember" aria-label="닫기">✕</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 📄 Shop Page (메인 로직)
+    // ========================================
+    function ShopPage() {
+      const { user } = useAuth();
+
+      const [products, setProducts] = useState([]);
+      const [prodLoading, setProdLoading] = useState(true);
+      const [prodError, setProdError] = useState('');
+
+      const [category, setCategory] = useState('전체');
+      const [query, setQuery] = useState('');
+
+      const [cart, setCart] = useState([]);
+      const [cartLoading, setCartLoading] = useState(false);
+      const [cartError, setCartError] = useState('');
+
+      const [orders, setOrders] = useState([]);
+      const [ordersLoading, setOrdersLoading] = useState(false);
+
+      const [authOpen, setAuthOpen] = useState(false);
+      const [adminOpen, setAdminOpen] = useState(false);
+      const [cartOpen, setCartOpen] = useState(false);
+      const [myPageOpen, setMyPageOpen] = useState(false);
+      const [checkoutOpen, setCheckoutOpen] = useState(false);
+      const [addingId, setAddingId] = useState(null);
+      const [busyId, setBusyId] = useState(null);
+      const [checkingOut, setCheckingOut] = useState(false);
+      const [paymentNotice, setPaymentNotice] = useState(null);
+      const [pendingPayment, setPendingPayment] = useState(null);
+      const paymentHandled = useRef(false);
+
+      // --- 상품 불러오기 (비로그인 포함 누구나) ---
+      useEffect(() => {
+        let alive = true;
+        (async () => {
+          setProdLoading(true); setProdError('');
+          const { data, error } = await sb.from('coffee_products').select('*').order('created_at', { ascending: true });
+          if (!alive) return;
+          if (error) setProdError('상품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+          else setProducts(data || []);
+          setProdLoading(false);
+        })();
+        return () => { alive = false; };
+      }, []);
+
+      // --- 장바구니 불러오기 (로그인 시) ---
+      const loadCart = useCallback(async () => {
+        if (!user) { setCart([]); return; }
+        setCartLoading(true); setCartError('');
+        const { data, error } = await sb.from('coffee_cart').select('*').order('created_at', { ascending: true });
+        if (error) { setCartError('장바구니를 불러오지 못했어요.'); setCartLoading(false); return; }
+        setCart(data || []);
+        setCartLoading(false);
+      }, [user]);
+
+      useEffect(() => { loadCart(); }, [loadCart]);
+
+      // --- 주문 내역 불러오기 (본인 것만, 최신순) ---
+      const loadOrders = useCallback(async () => {
+        if (!user) { setOrders([]); return; }
+        setOrdersLoading(true);
+        const { data, error } = await sb.from('coffee_orders')
+          .select('*, items:coffee_order_items(*)')
+          .order('paid_at', { ascending: false });
+        if (!error) setOrders(data || []);
+        setOrdersLoading(false);
+      }, [user]);
+
+      useEffect(() => { loadOrders(); }, [loadOrders]);
+
+      // --- 결제 리다이렉트 복귀 처리 (mount 시 URL 파싱) ---
+      useEffect(() => {
+        const p = new URLSearchParams(window.location.search);
+        const toss = p.get('toss');
+        if (!toss) return;
+        if (toss === 'fail') {
+          setPaymentNotice({ ok: false, msg: '결제가 취소되었어요: ' + (p.get('message') || '알 수 없는 사유') });
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (toss === 'success') {
+          // ⚠️ success URL은 지금 지우지 않는다 — confirm 성공 후 정리 (실패 시 새로고침 재시도 보존)
+          setPendingPayment({ paymentKey: p.get('paymentKey'), orderId: p.get('orderId'), amount: Number(p.get('amount')) });
+        }
+      }, []);
+
+      // --- 결제 승인(서버) → 주문 저장 (로그인 준비되면 1회) ---
+      useEffect(() => {
+        if (!pendingPayment || !user || paymentHandled.current) return;
+        paymentHandled.current = true;
+        (async () => {
+          setCheckingOut(true);
+          try {
+            const res = await fetch('/api/payments/confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(pendingPayment),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || '결제 승인에 실패했어요.');
+
+            const snap = JSON.parse(sessionStorage.getItem('ember_pending_items') || '[]');
+            const { data: order, error: oErr } = await sb.from('coffee_orders')
+              .insert({ total_price: pendingPayment.amount, status: 'paid' }).select().single();
+            if (oErr) throw oErr;
+            if (snap.length) {
+              const rows = snap.map((s) => ({
+                order_id: order.id, product_id: s.product_id,
+                product_name: s.product_name, quantity: s.quantity, price: s.price,
+              }));
+              const { error: itErr } = await sb.from('coffee_order_items').insert(rows);
+              if (itErr) throw itErr;
+            }
+            await sb.from('coffee_cart').delete().eq('user_id', user.id);
+            sessionStorage.removeItem('ember_pending_items');
+            window.history.replaceState({}, '', window.location.pathname); // 승인 성공 후 URL 정리 (재confirm 방지)
+            setCart([]);
+            await loadOrders();
+            setPaymentNotice({ ok: true, msg: `결제 완료! 주문번호 ${orderNo(order.id)} · ${won(pendingPayment.amount)}` });
+            setMyPageOpen(true);
+          } catch (e) {
+            setPaymentNotice({ ok: false, msg: '주문 저장 중 문제가 발생했어요: ' + e.message });
+          } finally {
+            setCheckingOut(false);
+            setPendingPayment(null);
+          }
+        })();
+      }, [pendingPayment, user, loadOrders]);
+
+      const productMap = useMemo(() => {
+        const m = {};
+        products.forEach((p) => { m[p.id] = p; });
+        return m;
+      }, [products]);
+
+      const cartItems = useMemo(
+        () => cart.map((c) => ({ ...c, product: productMap[c.product_id] })),
+        [cart, productMap]
+      );
+
+      const cartCount = useMemo(() => cart.reduce((s, c) => s + c.quantity, 0), [cart]);
+
+      const categories = useMemo(() => {
+        const set = new Set(products.map((p) => p.category).filter(Boolean));
+        return ['전체', ...Array.from(set)];
+      }, [products]);
+
+      const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return products.filter((p) => {
+          const okCat = category === '전체' || p.category === category;
+          const okQ = !q || (p.name || '').toLowerCase().includes(q) || (p.origin || '').toLowerCase().includes(q);
+          return okCat && okQ;
+        });
+      }, [products, category, query]);
+
+      // --- 담기 (있으면 수량+1) ---
+      const handleAdd = async (product) => {
+        if (!user) { setAuthOpen(true); return; }
+        setAddingId(product.id);
+        try {
+          const existing = cart.find((c) => c.product_id === product.id);
+          if (existing) {
+            const { data, error } = await sb.from('coffee_cart')
+              .update({ quantity: existing.quantity + 1 })
+              .eq('id', existing.id).select().single();
+            if (error) throw error;
+            setCart((prev) => prev.map((c) => (c.id === data.id ? data : c)));
+          } else {
+            const { data, error } = await sb.from('coffee_cart')
+              .insert({ product_id: product.id, quantity: 1 }).select().single();
+            if (error) throw error;
+            setCart((prev) => [...prev, data]);
+          }
+          setCartOpen(true);
+        } catch (err) {
+          alert('담는 중 문제가 발생했어요: ' + translateAuthError(err.message));
+        } finally {
+          setAddingId(null);
+        }
+      };
+
+      // --- 수량 변경 (0 이하면 삭제) ---
+      const handleQty = async (item, nextQty) => {
+        if (nextQty < 1) { return handleRemove(item); }
+        setBusyId(item.id);
+        try {
+          const { data, error } = await sb.from('coffee_cart')
+            .update({ quantity: nextQty }).eq('id', item.id).select().single();
+          if (error) throw error;
+          setCart((prev) => prev.map((c) => (c.id === data.id ? data : c)));
+        } catch (err) {
+          alert('수량 변경 실패: ' + translateAuthError(err.message));
+        } finally {
+          setBusyId(null);
+        }
+      };
+
+      // --- 삭제 ---
+      const handleRemove = async (item) => {
+        setBusyId(item.id);
+        try {
+          const { error } = await sb.from('coffee_cart').delete().eq('id', item.id);
+          if (error) throw error;
+          setCart((prev) => prev.filter((c) => c.id !== item.id));
+        } catch (err) {
+          alert('삭제 실패: ' + translateAuthError(err.message));
+        } finally {
+          setBusyId(null);
+        }
+      };
+
+      const handleLogout = async () => {
+        await sb.auth.signOut();
+        setCart([]);
+        setOrders([]);
+        setCartOpen(false);
+        setMyPageOpen(false);
+      };
+
+      // --- 주문하기: 장바구니 → 토스 결제창 열기 ---
+      const handleCheckout = () => {
+        if (!user || cartItems.length === 0) return;
+        setCartOpen(false);
+        setCheckoutOpen(true);
+      };
+
+      const checkoutTotal = useMemo(
+        () => cartItems.reduce((s, it) => s + (it.product?.price ?? 0) * it.quantity, 0),
+        [cartItems]
+      );
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          <Header user={user} cartCount={cartCount}
+            onOpenAuth={() => setAuthOpen(true)} onLogout={handleLogout}
+            onOpenCart={() => setCartOpen(true)} onOpenAdmin={() => setAdminOpen(true)}
+            onOpenMyPage={() => setMyPageOpen(true)} />
+
+          {/* Hero */}
+          <section className="relative border-b border-white/12 overflow-hidden">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-10 sm:pt-24 sm:pb-16">
+              <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-muted mb-10">
+                <span>(Specialty Coffee Roasters)</span>
+                <span className="hidden sm:inline">Est. 2026 — Seoul, KR</span>
+              </div>
+              <h2 className="font-bold leading-[0.85] tracking-tight text-[17vw] sm:text-[13vw] lg:text-[10.5rem]">
+                ROASTED<br /><span className="text-ember">TO ORDER.</span>
+              </h2>
+              <p className="mt-10 max-w-md font-mono text-xs sm:text-sm text-muted leading-relaxed">
+                주문 후 볶는 스페셜티 싱글오리진 &amp; 블렌드.<br />
+                갓 볶은 향을 그대로 — 30,000원 이상 무료배송.
+              </p>
+            </div>
+          </section>
+
+          <Marquee />
+
+          <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 sm:py-16">
+            {prodLoading ? (
+              <div className="flex justify-center py-28 text-ember"><Spinner className="h-7 w-7" /></div>
+            ) : prodError ? (
+              <EmptyHint code="ERR" text={prodError} />
+            ) : (
+              <>
+                <FilterBar categories={categories} active={category} onSelect={setCategory}
+                  query={query} onQuery={setQuery} count={filtered.length} />
+                <ProductGrid products={filtered} onAdd={handleAdd} addingId={addingId} />
+              </>
+            )}
+          </main>
+
+          <footer className="border-t border-white/12">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <p className="font-bold tracking-tight">EMBER ROASTERS<span className="text-ember">®</span></p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted">Supabase Auth + DB · ImageKit · TossPayments — Experiment Space</p>
+            </div>
+          </footer>
+
+          <CartPanel isOpen={cartOpen} onClose={() => setCartOpen(false)} user={user}
+            items={cartItems} loading={cartLoading} error={cartError}
+            onQty={handleQty} onRemove={handleRemove} busyId={busyId}
+            onCheckout={handleCheckout} checkingOut={checkingOut} />
+
+          <MyPage isOpen={myPageOpen} onClose={() => setMyPageOpen(false)}
+            user={user} orders={orders} loading={ordersLoading}
+            onLogout={handleLogout} cartCount={cartCount} />
+
+          <CheckoutModal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)}
+            user={user} items={cartItems} total={checkoutTotal} />
+
+          <PaymentToast notice={paymentNotice} onClose={() => setPaymentNotice(null)} />
+
+          {checkingOut && (
+            <div className="fixed inset-0 z-[80] bg-ink/90 backdrop-blur flex flex-col items-center justify-center gap-4">
+              <Spinner className="h-8 w-8 text-ember" />
+              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">결제 승인 중 · Confirming Payment…</p>
+            </div>
+          )}
+
+          <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+
+          <AdminModal isOpen={adminOpen} onClose={() => setAdminOpen(false)}
+            onCreated={(p) => setProducts((prev) => [...prev, p])} />
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App
+    // ========================================
+    function App() {
+      return (
+        <AuthProvider>
+          <ShopPage />
+        </AuthProvider>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
