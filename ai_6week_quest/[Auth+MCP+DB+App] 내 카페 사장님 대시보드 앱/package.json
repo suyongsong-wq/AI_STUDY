@@ -1,0 +1,10 @@
+{
+  "name": "cafe-owner-dashboard",
+  "version": "1.0.0",
+  "description": "내 카페 사장님 대시보드 — Auth + Supabase DB + 날씨 API + 실제 LLM(Gemini) 브리핑",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "engines": { "node": ">=18" }
+}

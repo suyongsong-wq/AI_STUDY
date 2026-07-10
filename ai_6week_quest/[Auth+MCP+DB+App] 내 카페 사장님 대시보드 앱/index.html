@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habers Cafe® — Owner Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: { ink:'#0b0a09', panel:'#111010', paper:'#ece6dc', ember:'#ff5a1f', muted:'#8b8178' },
+        fontFamily: {
+          sans: ['Space Grotesk', 'Apple SD Gothic Neo', 'Pretendard', 'system-ui', 'sans-serif'],
+          mono: ['Space Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        },
+      } },
+    };
+  </script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    html { -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Space Grotesk','Apple SD Gothic Neo','Pretendard',system-ui,sans-serif; background:#0b0a09; }
+    ::selection { background:#ff5a1f; color:#0b0a09; }
+    .grain { position:fixed; inset:0; z-index:60; pointer-events:none; opacity:.05;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .fade-in { animation:fadeIn .4s ease both; }
+    @keyframes grow { from{transform:scaleY(0)} to{transform:scaleY(1)} }
+    .bar-grow { animation:grow .6s ease both; transform-origin:bottom; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .blink { animation:blink 1.2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-ink text-paper">
+  <div class="grain"></div>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    const SUPABASE_URL = 'https://ibxhnwovdtnfttfzqpos.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_7RB2j_pC9YcoPG5N1n8uZg_p12ndXjr';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const LAT = 37.5445, LON = 127.0557;
+    const TODO_KEY = 'cafe_owner_todos_v2';
+    const DEFAULT_TODOS = ['우유 발주', '원두 입고 확인', '디저트 당일생산 체크'];
+
+    const won = (n) => (Number(n) || 0).toLocaleString('ko-KR') + '원';
+    const fmtDate = (d) => { if (!d) return '-'; const t = new Date(d); return isNaN(t) ? String(d) : `${t.getMonth()+1}/${t.getDate()}`; };
+    const stars = (a) => '★'.repeat(Math.round(a)) + '☆'.repeat(Math.max(0, 5 - Math.round(a)));
+    const WMO = { 0:'맑음',1:'대체로 맑음',2:'구름 조금',3:'흐림',45:'안개',48:'서리안개',51:'약한 이슬비',53:'이슬비',55:'강한 이슬비',61:'약한 비',63:'비',65:'강한 비',71:'약한 눈',73:'눈',75:'강한 눈',80:'소나기',81:'소나기',82:'강한 소나기',95:'뇌우' };
+    const wDesc = (c) => WMO[c] || '알 수 없음';
+    const wIcon = (c) => c===0?'☀':(c<=2?'⛅':(c===3?'☁':(c>=61&&c<=82?'🌧':(c>=71&&c<=75?'🌨':(c>=95?'⛈':'🌫')))));
+
+    // ===== 디자인 컴포넌트 (EMBER) =====
+    function Button({ variant='primary', size='md', disabled, onClick, type='button', className='', children }) {
+      const base = 'inline-flex items-center justify-center gap-2 font-mono uppercase tracking-[0.15em] transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none';
+      const v = {
+        primary: 'bg-ember text-ink hover:bg-paper',
+        secondary: 'border border-white/25 text-paper hover:border-ember hover:text-ember',
+        ghost: 'border border-white/15 text-muted hover:border-ember hover:text-ember',
+      };
+      const s = { sm:'px-3 py-1.5 text-[10px]', md:'px-4 py-2 text-[11px]', lg:'px-5 py-3 text-xs w-full' };
+      return <button type={type} disabled={disabled} onClick={onClick} className={`${base} ${v[variant]} ${s[size]} ${className}`}>{children}</button>;
+    }
+    function Panel({ label, action, className='', children }) {
+      return (
+        <div className={`bg-panel border border-white/12 p-5 fade-in ${className}`}>
+          {(label || action) && (
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">{label}</span>
+              {action}
+            </div>
+          )}
+          {children}
+        </div>
+      );
+    }
+    function Tag({ className='', children }) {
+      return <span className={`inline-block px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] ${className}`}>{children}</span>;
+    }
+    function Field({ label, ...p }) {
+      return (
+        <label className="block">
+          <span className="block mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">{label}</span>
+          <input {...p} className="w-full px-0 py-2 bg-transparent border-b border-white/20 text-paper placeholder-white/25 focus:outline-none focus:border-ember transition-colors" />
+        </label>
+      );
+    }
+    function Empty({ children }) { return <div className="text-center font-mono text-[11px] uppercase tracking-[0.15em] text-muted py-8">{children}</div>; }
+
+    // ===== 로그인 =====
+    function LoginScreen() {
+      const [mode, setMode] = useState('login');
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [notice, setNotice] = useState('');
+      const [loading, setLoading] = useState(false);
+      const submit = async (e) => {
+        e.preventDefault(); setError(''); setNotice('');
+        if (!email.trim()) { setError('이메일을 입력해 주세요.'); return; }
+        if (mode === 'signup' && password.length < 6) { setError('회원가입 비밀번호는 6자 이상.'); return; }
+        setLoading(true);
+        try {
+          if (mode === 'login') {
+            const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+            if (error) throw error;
+          } else {
+            const { error } = await sb.auth.signUp({ email: email.trim(), password });
+            if (error) throw error;
+            setNotice('가입 요청 완료. 이메일 확인 후 로그인.'); setMode('login');
+          }
+        } catch (err) { setError(err.message || '요청 중 오류.'); }
+        finally { setLoading(false); }
+      };
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4">
+          <div className="w-full max-w-sm fade-in">
+            <div className="mb-8">
+              <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember mb-3">(Owner Dashboard)</div>
+              <h1 className="text-3xl font-bold tracking-tight text-paper leading-none">HABERS CAFE <span className="text-ember align-top text-lg">®</span></h1>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted">사장님만 접근 / Sign in</p>
+            </div>
+            <div className="flex mb-6 border border-white/12">
+              <button onClick={()=>{setMode('login');setError('');setNotice('');}} className={`flex-1 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${mode==='login'?'bg-ember text-ink':'text-muted hover:text-paper'}`}>로그인</button>
+              <button onClick={()=>{setMode('signup');setError('');setNotice('');}} className={`flex-1 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${mode==='signup'?'bg-ember text-ink':'text-muted hover:text-paper'}`}>회원가입</button>
+            </div>
+            <form onSubmit={submit} className="space-y-6">
+              <Field label="Email / 이메일" type="email" value={email} autoComplete="username" onChange={(e)=>setEmail(e.target.value)} placeholder="owner@cafe.com" />
+              <Field label="Password / 비밀번호" type="password" value={password} autoComplete="current-password" onChange={(e)=>setPassword(e.target.value)} placeholder="••••" />
+              {error && <p className="font-mono text-[11px] text-ember border-l-2 border-ember pl-3 py-1">{error}</p>}
+              {notice && <p className="font-mono text-[11px] text-paper border-l-2 border-white/30 pl-3 py-1">{notice}</p>}
+              <Button type="submit" size="lg" disabled={loading}>{loading?'처리 중…':(mode==='login'?'로그인 →':'회원가입 →')}</Button>
+            </form>
+            <div className="mt-8 border-t border-white/12 pt-4 font-mono text-[10px] uppercase tracking-[0.15em] text-muted leading-relaxed">
+              사장님 전용 · 접근 권한 문의
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Header({ email, onLogout }) {
+      return (
+        <header className="border-b border-white/12 sticky top-0 z-20 bg-ink/90 backdrop-blur">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <h1 className="text-lg font-bold tracking-tight text-paper truncate">HABERS CAFE <span className="text-ember text-xs align-top">®</span></h1>
+              <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Owner Dashboard</span>
+            </div>
+            <div className="flex items-center gap-4 min-w-0">
+              <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-[0.15em] text-muted truncate max-w-[200px]">{email}</span>
+              <Button variant="secondary" size="sm" onClick={onLogout}>Logout</Button>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ===== 🤖 AI 브리핑 =====
+    function AIBriefing({ payload }) {
+      const [text, setText] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const run = useCallback(async () => {
+        if (!payload) return;
+        setLoading(true); setError(''); setText('');
+        try {
+          const resp = await fetch('/api/brief', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          const json = await resp.json();
+          if (!resp.ok) throw new Error(json.error || 'AI 브리핑 실패');
+          setText(json.briefing);
+        } catch (err) { setError(err.message); }
+        finally { setLoading(false); }
+      }, [payload]);
+      useEffect(() => { run(); }, [run]);
+      return (
+        <div className="md:col-span-2 lg:col-span-3 bg-panel border border-white/12 border-l-2 border-l-ember p-6 fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-ember">Today's Briefing</span>
+              <Tag className="border border-ember/40 text-ember">Gemini AI</Tag>
+            </div>
+            <button onClick={run} disabled={loading} className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted hover:text-ember transition-colors disabled:opacity-40">{loading?'생성 중…':'↻ Refresh'}</button>
+          </div>
+          {loading && <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted blink">Analyzing sales · menu · reviews · weather…</p>}
+          {error && <p className="font-mono text-[11px] text-ember border-l-2 border-ember pl-3 py-1">⚠ {error}</p>}
+          {text && <p className="text-paper/90 leading-relaxed text-[15px] sm:text-base whitespace-pre-line">{text}</p>}
+        </div>
+      );
+    }
+
+    // ===== 🌤 날씨 =====
+    function WeatherWidget({ weather }) {
+      return (
+        <Panel label="Weather / 성수동 날씨" action={<Tag className="text-muted">외부 API</Tag>}>
+          {!weather ? <Empty>Loading…</Empty> : (
+            <div className="flex items-center gap-4">
+              <div className="text-5xl">{wIcon(weather.code)}</div>
+              <div>
+                <div className="text-3xl font-bold text-paper">{weather.temp}°</div>
+                <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted mt-1">{wDesc(weather.code)} · 강수 {weather.precipProb}%</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-ember mt-1">{weather.precipProb >= 60 ? '비 → 실내·디저트 수요↑' : '맑음 → 테이크아웃↑'}</div>
+              </div>
+            </div>
+          )}
+        </Panel>
+      );
+    }
+
+    // ===== ✅ 할일 =====
+    function TodoWidget({ onChange }) {
+      const [todos, setTodos] = useState([]);
+      const [text, setText] = useState('');
+      useEffect(() => {
+        try { const s = localStorage.getItem(TODO_KEY); setTodos(s ? JSON.parse(s) : DEFAULT_TODOS.map((t,i)=>({id:Date.now()+i,text:t,done:false}))); }
+        catch { setTodos(DEFAULT_TODOS.map((t,i)=>({id:Date.now()+i,text:t,done:false}))); }
+      }, []);
+      useEffect(() => { localStorage.setItem(TODO_KEY, JSON.stringify(todos)); onChange && onChange(todos.filter(t=>!t.done).map(t=>t.text)); }, [todos]);
+      const add = (e) => { e.preventDefault(); const v=text.trim(); if(!v) return; setTodos(p=>[...p,{id:Date.now(),text:v,done:false}]); setText(''); };
+      const toggle = (id) => setTodos(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+      const remove = (id) => setTodos(p=>p.filter(t=>t.id!==id));
+      const done = todos.filter(t=>t.done).length;
+      return (
+        <Panel label="To-do / 오늘 할일" action={<Tag className={done===todos.length&&todos.length?'text-ember':'text-muted'}>{done}/{todos.length}</Tag>}>
+          <form onSubmit={add} className="flex gap-3 mb-4 border-b border-white/15 pb-2">
+            <input value={text} onChange={(e)=>setText(e.target.value)} placeholder="ADD TASK…" className="flex-1 bg-transparent font-mono text-[11px] uppercase tracking-[0.1em] text-paper placeholder-white/25 focus:outline-none" />
+            <button type="submit" className="font-mono text-[11px] uppercase tracking-[0.15em] text-ember hover:text-paper">+ Add</button>
+          </form>
+          <ul className="space-y-1 max-h-56 overflow-y-auto">
+            {todos.length===0 && <Empty>No tasks</Empty>}
+            {todos.map(t=>(
+              <li key={t.id} className="flex items-center gap-3 group py-1.5">
+                <button onClick={()=>toggle(t.id)} className={`w-4 h-4 border flex items-center justify-center text-[10px] transition-colors ${t.done?'bg-ember border-ember text-ink':'border-white/30 text-transparent hover:border-ember'}`}>✓</button>
+                <span className={`flex-1 text-sm ${t.done?'line-through text-muted':'text-paper'}`}>{t.text}</span>
+                <button onClick={()=>remove(t.id)} className="font-mono text-xs text-muted hover:text-ember opacity-0 group-hover:opacity-100 transition">✕</button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      );
+    }
+
+    // ===== 📊 매출 =====
+    function WeeklySales({ sales }) {
+      const recent = useMemo(() => [...(sales||[])].sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-7), [sales]);
+      const total = recent.reduce((s,r)=>s+(Number(r.revenue)||0),0);
+      const max = Math.max(1, ...recent.map(r=>Number(r.revenue)||0));
+      return (
+        <Panel label="Sales / 이번 주 매출" action={<span className="font-mono text-sm text-ember">{won(total)}</span>}>
+          {recent.length===0 ? <Empty>No data</Empty> : (
+            <>
+              {/* 막대 트랙(고정 높이) — 라벨과 분리해 정확한 비례 */}
+              <div className="flex items-end gap-1.5 h-32">
+                {recent.map((r,i)=>{ const h=Math.max(4,((Number(r.revenue)||0)/max)*100); return (
+                  <div key={i} className="flex-1 h-full flex items-end group relative">
+                    <div className="w-full bg-ember/80 hover:bg-ember bar-grow transition-colors" style={{height:`${h}%`}} title={won(r.revenue)}></div>
+                    <span className="absolute -top-4 left-0 right-0 text-center font-mono text-[9px] text-ember opacity-0 group-hover:opacity-100 transition whitespace-nowrap">{won(r.revenue)}</span>
+                  </div>); })}
+              </div>
+              {/* 날짜 라벨 행 */}
+              <div className="flex gap-1.5 mt-1.5">
+                {recent.map((r,i)=>(<span key={i} className="flex-1 text-center font-mono text-[9px] text-muted">{fmtDate(r.date)}</span>))}
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted text-right mt-2">손님 합계 {recent.reduce((s,r)=>s+(Number(r.customers)||0),0).toLocaleString('ko-KR')}명</div>
+            </>
+          )}
+        </Panel>
+      );
+    }
+
+    // ===== 🏆 인기 메뉴 =====
+    function TopMenus({ menuSales }) {
+      const top3 = useMemo(() => {
+        const m={}; (menuSales||[]).forEach(x=>{ if(!m[x.menu]) m[x.menu]={menu:x.menu,qty:0,amount:0}; m[x.menu].qty+=Number(x.qty)||0; m[x.menu].amount+=Number(x.amount)||0; });
+        return Object.values(m).sort((a,b)=>b.amount-a.amount).slice(0,3);
+      }, [menuSales]);
+      return (
+        <Panel label="Top Menu / 인기 메뉴">
+          {top3.length===0 ? <Empty>No data</Empty> : (
+            <ul className="divide-y divide-white/10">{top3.map((m,i)=>(
+              <li key={m.menu} className="flex items-center gap-3 py-3">
+                <span className="font-mono text-lg text-ember w-6">{String(i+1).padStart(2,'0')}</span>
+                <div className="flex-1 min-w-0"><div className="font-semibold text-paper text-sm truncate">{m.menu}</div><div className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">{m.qty.toLocaleString('ko-KR')} cups</div></div>
+                <div className="font-mono text-sm text-paper">{won(m.amount)}</div>
+              </li>))}
+            </ul>
+          )}
+        </Panel>
+      );
+    }
+
+    // ===== ⭐ 리뷰 =====
+    function ReviewSummary({ reviews }) {
+      const { avg, count, lastNeg } = useMemo(() => {
+        const l=reviews||[]; const count=l.length; const avg=count?l.reduce((s,r)=>s+(Number(r.rating)||0),0)/count:0;
+        const neg=[...l].filter(r=>(Number(r.rating)||0)<=3).sort((a,b)=>new Date(b.date)-new Date(a.date));
+        return { avg, count, lastNeg: neg[0]||null };
+      }, [reviews]);
+      return (
+        <Panel label="Reviews / 리뷰 요약">
+          {count===0 ? <Empty>No reviews</Empty> : (
+            <div className="space-y-3">
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-bold text-ember">{avg.toFixed(1)}</span>
+                <span className="text-ember tracking-widest">{stars(avg)}</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted">{count} reviews</span>
+              </div>
+              {lastNeg && <div className="font-mono text-[11px] text-paper/80 border-l-2 border-ember pl-3 py-1">최근 불만: "{lastNeg.review || lastNeg.text || lastNeg.theme || '내용 없음'}"</div>}
+            </div>
+          )}
+        </Panel>
+      );
+    }
+
+    // ===== 대시보드 =====
+    function Dashboard({ session, onLogout }) {
+      const [sales, setSales] = useState([]);
+      const [menuSales, setMenuSales] = useState([]);
+      const [reviews, setReviews] = useState([]);
+      const [weather, setWeather] = useState(null);
+      const [undoneTodos, setUndoneTodos] = useState([]);
+      const [loaded, setLoaded] = useState(false);
+      useEffect(() => {
+        (async () => {
+          const [s, ms, rv] = await Promise.all([
+            sb.from('cafe_sales').select('*'),
+            sb.from('cafe_menu_sales').select('*'),
+            sb.from('cafe_reviews').select('*'),
+          ]);
+          setSales(s.data || []); setMenuSales(ms.data || []); setReviews(rv.data || []);
+          try {
+            const wr = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code&daily=precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=1`);
+            const wj = await wr.json();
+            setWeather({ temp: Math.round(wj.current?.temperature_2m ?? 0), code: wj.current?.weather_code ?? 0, precipProb: wj.daily?.precipitation_probability_max?.[0] ?? 0 });
+          } catch { setWeather({ temp: '-', code: 0, precipProb: 0 }); }
+          setLoaded(true);
+        })();
+      }, []);
+      const payload = useMemo(() => {
+        if (!loaded) return null;
+        const sorted = [...sales].sort((a,b)=>new Date(a.date)-new Date(b.date));
+        const last = sorted[sorted.length-1], prev = sorted[sorted.length-2];
+        const menuMap={}; menuSales.forEach(x=>{ menuMap[x.menu]=(menuMap[x.menu]||0)+(Number(x.amount)||0); });
+        const topMenus = Object.entries(menuMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([menu])=>menu);
+        const avg = reviews.length ? reviews.reduce((s,r)=>s+(Number(r.rating)||0),0)/reviews.length : null;
+        const negThemes={}; reviews.filter(r=>(Number(r.rating)||0)<=2).forEach(r=>{ const t=r.theme||r.review||'기타'; negThemes[t]=(negThemes[t]||0)+1; });
+        const negTheme = Object.entries(negThemes).sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
+        return {
+          date: last?.date || null, todayRevenue: last?.revenue ?? null, prevRevenue: prev?.revenue ?? null,
+          weekTotal: sorted.slice(-7).reduce((s,r)=>s+(Number(r.revenue)||0),0), topMenus,
+          reviews: { avg: avg!==null?Number(avg.toFixed(1)):null, count: reviews.length, negTheme },
+          weather: weather ? { temp: weather.temp, desc: wDesc(weather.code), precipProb: weather.precipProb } : null,
+          undoneTodos,
+        };
+      }, [loaded, sales, menuSales, reviews, weather, undoneTodos]);
+      return (
+        <div className="min-h-screen">
+          <Header email={session.user.email} onLogout={onLogout} />
+          <main className="max-w-6xl mx-auto px-4 py-8">
+            <div className="mb-6">
+              <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember">(Good morning, 사장님)</div>
+              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-paper leading-none mt-1">DAILY BRIEF.</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <AIBriefing payload={payload} />
+              <WeeklySales sales={sales} />
+              <TopMenus menuSales={menuSales} />
+              <ReviewSummary reviews={reviews} />
+              <WeatherWidget weather={weather} />
+              <TodoWidget onChange={setUndoneTodos} />
+            </div>
+            <p className="text-center font-mono text-[10px] uppercase tracking-[0.15em] text-muted mt-8">
+              Data: Supabase · open-meteo · localStorage &nbsp;/&nbsp; AI: Gemini 2.5-flash
+            </p>
+          </main>
+        </div>
+      );
+    }
+
+    function App() {
+      const [session, setSession] = useState(undefined);
+      useEffect(() => {
+        sb.auth.getSession().then(({ data }) => setSession(data.session));
+        const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+        return () => sub.subscription.unsubscribe();
+      }, []);
+      const logout = async () => { await sb.auth.signOut(); };
+      if (session === undefined) return <div className="min-h-screen flex items-center justify-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted">Loading…</div>;
+      if (!session) return <LoginScreen />;
+      return <Dashboard session={session} onLogout={logout} />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
