@@ -1,0 +1,12 @@
+{
+  "name": "cafe-context-agent",
+  "version": "1.0.0",
+  "description": "my_cafe.md(컨셉) + Supabase 운영 DB + Gemini LLM 을 결합한 내 카페 전담 AI 운영 파트너 (Before/After 비교)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "dotenv": "^16.4.7"
+  }
+}

@@ -1,0 +1,48 @@
+내 카페 사장님 대시보드 — AI 에이전트 대화/개선 기록
+(Claude Code와 여러 라운드 대화하며 빌드·수정·배포. "2회 이상 대화하며 개선" 증빙)
+
+────────────────────────────────────────
+[요청 1] 대시보드 작업 진행하자
+- 스펙 확인: Part1 로그인(Auth) / Part2 데이터소스 2개+ / Part3 AI 브리핑 / Part4 UI·배포.
+- 도전 퀘스트, 위젯 2~3개만 동작해도 인정, 카페 데이터 재활용.
+
+[에이전트 판단] AI 브리핑을 규칙기반으로 만들면 감점 → 실제 LLM으로 결정
+- 기존 카페 에이전트의 Gemini 키 재사용. gemini-2.0-flash는 무료 quota 0(429),
+  gemini-2.5-flash는 정상 동작 확인 → 2.5-flash 채택.
+- 프론트에 키 노출 금지 → 서버리스 함수(api/brief.js)에서만 호출하도록 설계.
+
+[빌드]
+- index.html(React CDN+Tailwind, Auth·위젯) + api/brief.js(Gemini 서버리스)
+  + lib/generateBriefing.js(공유 코어) + server.js(로컬 dev) + vercel.json.
+- 데이터소스 3개: Supabase DB(cafe_sales/menu_sales/reviews) + open-meteo 날씨 API
+  + localStorage 할일. (요구 2개+ 초과)
+
+────────────────────────────────────────
+[개선 1] 로컬 검증 중 버그 발견 — 이번 주 매출 막대가 안 그려짐
+- 원인: 막대 컬럼에 높이(h-full)가 없어 height:% 가 0으로 계산.
+- 수정: 컬럼에 h-full 추가 → 막대 렌더됨.
+
+[요청 2] 대시보드 UI를 EMBER 쇼핑몰 스타일로 바꿔줘
+- 기존 Ember Roasters 쇼핑몰에서 팔레트·폰트 추출:
+  ink #0b0a09 · ember #ff5a1f · paper #ece6dc · muted #8b8178,
+  Space Grotesk + Space Mono, 필름 그레인 오버레이.
+- 대시보드 전면 리스타일(다크·모노 대문자 라벨·오렌지 포인트). 기능은 그대로.
+
+[개선 2] 막대가 값에 비례 안 하는 버그 재발견
+- 원인: 막대 컬럼 안에 날짜·호버 라벨이 같이 있어 height:% 가 라벨 공간까지 포함.
+- 수정: 막대 트랙(고정 높이)과 날짜 라벨 행을 분리 → 정확한 비례로 렌더.
+
+────────────────────────────────────────
+[요청 3] Vercel 배포 진행
+- vercel link → 환경변수 GEMINI_API_KEY 등록(프론트 노출 방지) → prod 배포.
+- 문제: Deployment Protection(Vercel 인증) 켜져 있어 URL 비공개(401).
+  → 프로젝트 설정 ssoProtection 해제 → 공개 확인(200), 서버리스 브리핑 실동작 확인.
+
+[개선 3 — 보안] 로그인 화면에 데모 계정(실제 이메일/비번) 노출 지적
+- 공개 사이트에 실제 크레덴셜 노출은 위험 → 로그인 화면에서 제거 후 재배포.
+
+────────────────────────────────────────
+[결과]
+- 배포 URL: https://cafe-owner-dashboard.vercel.app
+- Auth + 데이터소스 3개 + 실제 Gemini 브리핑 전부 동작.
+- 총 3회 이상 대화하며 버그 수정·디자인 개선·보안 보완·배포까지 반복 개선.
