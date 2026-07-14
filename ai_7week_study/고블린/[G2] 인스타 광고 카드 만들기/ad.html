@@ -1,0 +1,120 @@
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1080px;overflow:hidden;background:#fff;
+    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+
+  /* toss.im 에서 실측한 브랜드 팔레트 (2026-07-14) */
+  :root{
+    --blue:#3182F6;      /* rgb(49,130,246) — 사이트 최다 등장 브랜드 컬러 */
+    --blue-d:#1B64DA;
+    --g900:#191F28; --g700:#4E5968; --g600:#6B7684; --g300:#D1D6DB; --g50:#F9FAFB;
+  }
+
+  .card{position:relative;width:1080px;height:1080px;background:#fff;
+    padding:76px 76px 68px;display:flex;flex-direction:column;overflow:hidden}
+
+  /* 워드마크 — 토스 로고 파일이 아니라 텍스트 조판 (습작) */
+  .wm{font-size:34px;font-weight:800;color:var(--blue);letter-spacing:-.06em}
+
+  .copy{margin-top:52px;font-size:74px;font-weight:800;color:var(--g900);
+    letter-spacing:-.045em;line-height:1.26}
+  .copy .hl{color:var(--blue)}
+  .sub{margin-top:24px;font-size:31px;font-weight:500;color:var(--g600);letter-spacing:-.025em}
+
+  /* 비주얼 */
+  /* 생성 아이콘이 자체 배경을 갖고 있으므로 패널 배경을 따로 깔지 않는다
+     (blend mode로 억지 합성하면 붙여넣은 티가 남) */
+  .visual{margin-top:auto;margin-bottom:auto;align-self:center;
+    width:430px;height:430px;border-radius:56px;overflow:hidden;
+    display:flex;align-items:center;justify-content:center}
+  .visual img{width:100%;height:100%;object-fit:cover;transform:scale(1.02)}
+
+  /* CTA */
+  .cta{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:20px}
+  .btn{flex:1;background:var(--blue);color:#fff;border-radius:20px;
+    padding:30px 0;text-align:center;font-size:34px;font-weight:700;letter-spacing:-.03em}
+  .arrow{width:88px;height:88px;flex:none;border-radius:20px;background:var(--g50);
+    border:1px solid var(--g300);display:flex;align-items:center;justify-content:center;
+    font-size:36px;color:var(--g700)}
+
+  .disc{margin-top:22px;text-align:center;font-size:16px;font-weight:500;
+    color:var(--g300);letter-spacing:-.01em}
+
+  /* ── 캐러셀 2: 기능 리스트 ── */
+  /* 남는 공간에 중앙 정렬 — 아래로 몰면 하단에 구멍이 생긴다 */
+  .feat{margin-top:56px;flex:1;display:flex;flex-direction:column;justify-content:center;gap:28px}
+  .f{display:flex;align-items:center;gap:26px;background:var(--g50);
+    border-radius:22px;padding:40px 34px}
+  .fi{width:60px;height:60px;flex:none;border-radius:16px;background:var(--blue);
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-size:30px;font-weight:800}
+  .ft{font-size:34px;font-weight:700;color:var(--g900);letter-spacing:-.03em}
+
+  /* ── 캐러셀 3: CTA 풀블리드 ── */
+  .card.blue{background:linear-gradient(155deg,#3182F6 0%,#1B64DA 100%)}
+  .card.blue .wm{color:#fff}
+  .card.blue .copy{color:#fff}
+  .card.blue .copy .hl{color:#BFDBFF}
+  .card.blue .sub{color:rgba(255,255,255,.78)}
+  .card.blue .visual{background:rgba(255,255,255,.14)}
+  .card.blue .visual img{mix-blend-mode:normal}
+  .card.blue .btn{background:#fff;color:var(--blue)}
+  .card.blue .arrow{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.3);color:#fff}
+  .card.blue .disc{color:rgba(255,255,255,.42)}
+
+  .page{position:absolute;right:76px;top:76px;font-size:22px;font-weight:700;
+    color:var(--g300);letter-spacing:.08em}
+  .card.blue .page{color:rgba(255,255,255,.5)}
+</style>
+
+<div class="card" id="stage"></div>
+
+<script>
+  const DISC = '학습용 디자인 습작 · 토스와 무관합니다';
+  const V = {
+    // 메인 (단일 광고 카드): 한 줄 카피 + 비주얼 + CTA
+    main: {blue:false, page:'', body:`
+      <div class="wm">toss</div>
+      <div class="copy">등본 발급도<br><span class="hl">토스로 한 번에.</span></div>
+      <div class="sub">주민센터 가지 않아도 됩니다</div>
+      <div class="visual"><img src="doc.png"></div>
+      <div class="cta"><div class="btn">토스 앱에서 발급하기</div><div class="arrow">→</div></div>
+      <div class="disc">${DISC}</div>`},
+
+    // 캐러셀 1 — 후킹
+    c1: {blue:false, page:'1 / 3', body:`
+      <div class="wm">toss</div>
+      <div class="copy">등본 한 장 떼러<br><span class="hl">주민센터</span> 가세요?</div>
+      <div class="sub">번호표 뽑고, 기다리고, 또 기다리고…</div>
+      <div class="visual"><img src="doc.png"></div>
+      <div class="disc">${DISC}</div>`},
+
+    // 캐러셀 2 — 본문
+    c2: {blue:false, page:'2 / 3', body:`
+      <div class="wm">toss</div>
+      <div class="copy">토스에선<br><span class="hl">앱 하나로</span> 끝나요.</div>
+      <div class="feat">
+        <div class="f"><div class="fi">📄</div><div class="ft">등본 · 초본 발급</div></div>
+        <div class="f"><div class="fi">💸</div><div class="ft">세금 납부</div></div>
+        <div class="f"><div class="fi">🏠</div><div class="ft">내 부동산 · 자동차 관리</div></div>
+      </div>
+      <div class="disc">${DISC}</div>`},
+
+    // 캐러셀 3 — CTA
+    c3: {blue:true, page:'3 / 3', body:`
+      <div class="wm">toss</div>
+      <div class="copy">금융의 모든 것,<br><span class="hl">쉽고 간편하게.</span></div>
+      <div class="sub">토스 앱에서 지금 확인해보세요</div>
+      <div class="visual"><img src="phone.png"></div>
+      <div class="cta"><div class="btn">토스 앱 열기</div><div class="arrow">→</div></div>
+      <div class="disc">${DISC}</div>`},
+  };
+
+  const key = new URLSearchParams(location.search).get('v') || 'main';
+  const v = V[key] || V.main;
+  const st = document.getElementById('stage');
+  if (v.blue) st.classList.add('blue');
+  st.innerHTML = (v.page ? `<div class="page">${v.page}</div>` : '') + v.body;
+</script>

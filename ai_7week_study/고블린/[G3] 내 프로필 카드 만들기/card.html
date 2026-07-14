@@ -1,0 +1,172 @@
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1350px;overflow:hidden;
+    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+
+  /* Toss 계열 팔레트 — 본인 디자인 취향(about-me.md §7)에서 도출 */
+  :root{
+    --blue:#3182F6; --blue-d:#1B64DA;
+    --g900:#191F28; --g700:#4E5968; --g500:#8B95A1; --g200:#E5E8EB; --g50:#F9FAFB;
+  }
+
+  .card{position:relative;width:1080px;height:1350px;background:#fff;overflow:hidden;
+    display:flex;flex-direction:column}
+
+  /* 상단 블루 헤더 — 글래스모피즘(취향) */
+  .hero{position:relative;height:520px;overflow:hidden;
+    background:linear-gradient(150deg,#3182F6 0%,#1B64DA 55%,#0F4FBF 100%)}
+  .blob{position:absolute;border-radius:50%;filter:blur(0.5px)}
+  .b1{width:520px;height:520px;right:-150px;top:-190px;background:rgba(255,255,255,.13)}
+  .b2{width:340px;height:340px;left:-120px;bottom:-150px;background:rgba(255,255,255,.10)}
+  .b3{width:180px;height:180px;right:120px;bottom:-60px;background:rgba(255,255,255,.08)}
+
+  .glass{position:absolute;left:64px;top:64px;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.32);
+    backdrop-filter:blur(14px);border-radius:999px;padding:11px 26px;
+    font-size:24px;font-weight:600;color:#fff;letter-spacing:-.01em}
+
+  .name{position:absolute;left:64px;bottom:150px;
+    font-size:104px;font-weight:800;color:#fff;letter-spacing:-.045em;line-height:1}
+  .name small{font-size:36px;font-weight:500;opacity:.72;margin-left:16px;letter-spacing:-.01em}
+  .role{position:absolute;left:64px;bottom:82px;
+    font-size:34px;font-weight:600;color:rgba(255,255,255,.92);letter-spacing:-.02em}
+
+  /* 본문 */
+  /* 남는 공간을 아래로 몰지 않고 위아래로 나눠 균형을 잡는다 */
+  .body{flex:1;padding:40px 64px 0;display:flex;flex-direction:column;justify-content:center}
+
+  .tagline{font-size:44px;font-weight:700;color:var(--g900);letter-spacing:-.035em;
+    line-height:1.34}
+  .tagline em{font-style:normal;color:var(--blue);
+    box-shadow:inset 0 -14px 0 rgba(49,130,246,.14)}
+
+  .divider{height:1px;background:var(--g200);margin:44px 0 40px}
+
+  .rows{display:flex;flex-direction:column;gap:38px}
+  .row{display:flex;align-items:baseline;gap:22px}
+  .k{width:132px;flex:none;font-size:23px;font-weight:600;color:var(--g500);letter-spacing:-.01em}
+  .v{font-size:29px;font-weight:600;color:var(--g900);letter-spacing:-.025em}
+  .v .mono{font-family:"JetBrains Mono",monospace;font-weight:400;font-size:26px;letter-spacing:-.01em}
+  .chips{display:flex;gap:9px;flex-wrap:wrap}
+  .chip{background:var(--g50);border:1px solid var(--g200);border-radius:9px;
+    padding:7px 15px;font-size:22px;font-weight:600;color:var(--g700);letter-spacing:-.02em}
+
+  /* 하단 */
+  .foot{margin-top:auto;padding:0 64px 56px;display:flex;align-items:flex-end;
+    justify-content:space-between;gap:30px}
+  .footL{}
+  .footlabel{font-size:20px;font-weight:600;color:var(--g500);letter-spacing:.06em}
+  .foothandle{margin-top:9px;font-family:"JetBrains Mono",monospace;font-size:26px;
+    font-weight:600;color:var(--g900)}
+  .qr{width:132px;height:132px;flex:none;border-radius:14px;overflow:hidden;
+    border:1px solid var(--g200);background:#fff}
+  .qr img{width:100%;height:100%;display:block}
+
+  /* ── 뒷면 ── */
+  .back{background:var(--g900)}
+  .back .bhead{padding:64px 64px 0}
+  .back .btitle{font-size:40px;font-weight:800;color:#fff;letter-spacing:-.035em}
+  .back .bsub{margin-top:12px;font-size:24px;font-weight:500;color:#8B95A1;letter-spacing:-.015em}
+  .back .blist{padding:44px 64px 0;display:flex;flex-direction:column;gap:0}
+  .bitem{display:flex;align-items:center;gap:20px;padding:36px 0;
+    border-bottom:1px solid rgba(255,255,255,.09)}
+  .bnum{width:44px;flex:none;font-family:"JetBrains Mono",monospace;font-size:21px;
+    font-weight:600;color:var(--blue)}
+  .bname{flex:1;font-size:29px;font-weight:700;color:#fff;letter-spacing:-.025em}
+  .bdesc{font-size:22px;font-weight:500;color:#8B95A1;letter-spacing:-.015em;text-align:right}
+  .bstat{margin:56px 64px 0;background:rgba(49,130,246,.10);
+    border:1px solid rgba(49,130,246,.28);border-radius:18px;padding:36px 32px;
+    display:flex;justify-content:space-around}
+  .st{text-align:center}
+  .stn{font-size:46px;font-weight:800;color:var(--blue);letter-spacing:-.03em}
+  .stl{margin-top:6px;font-size:19px;font-weight:600;color:#8B95A1}
+  .back .foot .footlabel{color:#6B7684}
+  .back .foot .foothandle{color:#fff}
+  .back .qr{border-color:rgba(255,255,255,.16)}
+</style>
+
+<!-- ══ 앞면 ══ -->
+<div class="card" id="front">
+  <div class="hero">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="glass">🏭 AI 공장장 부트캠프 3기</div>
+    <div class="name">송수용<small>suyong</small></div>
+    <div class="role">만들면서 배우는 실용주의 빌더</div>
+  </div>
+
+  <div class="body">
+    <div class="tagline">
+      개념만 듣지 않습니다.<br><em>작동하는 걸 손으로 만들면서</em> 배웁니다.
+    </div>
+    <div class="divider"></div>
+    <div class="rows">
+      <div class="row"><div class="k">지금 만드는 것</div>
+        <div class="v">Trailmark — 여행 기록 지도 앱</div></div>
+      <div class="row"><div class="k">만든 것</div>
+        <div class="v">웹앱 · AI 에이전트 · 쇼핑몰 <span style="color:var(--g500);font-weight:500">20+</span></div></div>
+      <div class="row"><div class="k">일하는 방식</div>
+        <div class="chips">
+          <span class="chip">작게 만들고 확인</span><span class="chip">꼼꼼함</span>
+          <span class="chip">정리정돈</span><span class="chip">깔끔한 UI</span>
+        </div></div>
+      <div class="row"><div class="k">연락</div>
+        <div class="v"><span class="mono">suyong.song@griff.co.kr</span></div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="footL">
+      <div class="footlabel">GITHUB</div>
+      <div class="foothandle">github.com/suyongsong-wq</div>
+    </div>
+    <div class="qr"><img id="qr1"></div>
+  </div>
+</div>
+
+<!-- ══ 뒷면 ══ -->
+<div class="card back" id="back">
+  <div class="bhead">
+    <div class="btitle">직접 만든 것들</div>
+    <div class="bsub">부트캠프 2 → 7주차 · 손으로 만들며 배운 기록</div>
+  </div>
+  <div class="blist">
+    <div class="bitem"><div class="bnum">01</div><div class="bname">Ember Roasters</div>
+      <div class="bdesc">쇼핑몰 · 결제 · 이미지업로드</div></div>
+    <div class="bitem"><div class="bnum">02</div><div class="bname">카페 사장님 대시보드</div>
+      <div class="bdesc">Auth · DB · AI 브리핑</div></div>
+    <div class="bitem"><div class="bnum">03</div><div class="bname">내 카페를 아는 AI 에이전트</div>
+      <div class="bdesc">Context · Agent · DB</div></div>
+    <div class="bitem"><div class="bnum">04</div><div class="bname">가계부 분석 에이전트</div>
+      <div class="bdesc">Agent · DB</div></div>
+    <div class="bitem"><div class="bnum">05</div><div class="bname">나를 설명하는 Q&amp;A 앱</div>
+      <div class="bdesc">RAG 기초 · 서버로 키 숨기기</div></div>
+    <div class="bitem"><div class="bnum">06</div><div class="bname">Trailmark <span style="color:var(--blue);font-size:20px">진행 중</span></div>
+      <div class="bdesc">여행 기록 지도 · 파이널</div></div>
+  </div>
+  <div class="bstat">
+    <div class="st"><div class="stn">7</div><div class="stl">주차 진행 중</div></div>
+    <div class="st"><div class="stn">20+</div><div class="stl">만든 결과물</div></div>
+    <div class="st"><div class="stn">137</div><div class="stl">6주차 점수 /140</div></div>
+  </div>
+  <div class="foot">
+    <div class="footL">
+      <div class="footlabel">CONTACT</div>
+      <div class="foothandle">suyong.song@griff.co.kr</div>
+    </div>
+    <div class="qr"><img id="qr2"></div>
+  </div>
+</div>
+
+<script>
+  // QR → github 프로필
+  const url = 'https://github.com/suyongsong-wq';
+  const src = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data=' + encodeURIComponent(url);
+  qr1.src = src; qr2.src = src;
+
+  // ?side=front|back → 한 면만 렌더 (body가 overflow:hidden이라 스택하면 뒷면이 잘림)
+  const side = new URLSearchParams(location.search).get('side') || 'front';
+  document.getElementById(side === 'back' ? 'front' : 'back').style.display = 'none';
+</script>
