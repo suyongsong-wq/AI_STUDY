@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@200..700&family=Cormorant+Garamond:ital,wght@1,300;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1350px;height:2000px;overflow:hidden;background:#05060c}
+  .sheet{position:relative;width:1350px;height:2000px;overflow:hidden}
+
+  .kv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+      filter:saturate(1.1) contrast(1.08)}
+  /* 하단 타이틀존 확보용 그라데이션 + 상단 살짝 */
+  .grade{position:absolute;inset:0;
+    background:
+      linear-gradient(180deg, rgba(5,6,12,.72) 0%, rgba(5,6,12,.10) 18%, rgba(5,6,12,0) 34%),
+      linear-gradient(0deg,  rgba(5,6,12,.97) 0%, rgba(5,6,12,.90) 17%, rgba(5,6,12,.55) 30%, rgba(5,6,12,0) 46%);}
+  /* 시네마틱 비네트 (radial-gradient — box-shadow 블러는 이 캔버스에서 렌더가 너무 느림) */
+  .vig{position:absolute;inset:0;
+    background:radial-gradient(120% 78% at 50% 42%, rgba(2,3,8,0) 42%, rgba(2,3,8,.55) 78%, rgba(2,3,8,.9) 100%)}
+
+  /* ── 상단 태그라인 ── */
+  .tag{position:absolute;top:78px;left:0;right:0;text-align:center;
+    font-family:Oswald,sans-serif;font-weight:300;font-size:27px;letter-spacing:.44em;
+    color:rgba(255,255,255,.9);text-indent:.44em;text-shadow:0 2px 18px rgba(0,0,0,.9)}
+
+  /* ── 타이틀존 ── */
+  .titlezone{position:absolute;left:0;right:0;bottom:0;padding:0 70px 52px;
+    display:flex;flex-direction:column;align-items:center}
+
+  .title{font-family:Anton,sans-serif;font-size:171px;line-height:.9;letter-spacing:.005em;
+    background:linear-gradient(180deg,#FF2A2A 0%,#E01515 42%,#1B4FD8 58%,#0B2E96 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    -webkit-text-stroke:2.5px rgba(255,255,255,.16);
+    filter:drop-shadow(0 4px 16px rgba(255,40,40,.45));
+    position:relative}
+  /* 타이틀 위 거미줄 라인 오버레이 */
+  .webmask{position:absolute;inset:0;pointer-events:none;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.16) 0 1px, transparent 1px 26px),
+      repeating-linear-gradient(0deg,  rgba(255,255,255,.10) 0 1px, transparent 1px 22px);
+    -webkit-mask-image:var(--m);mask-image:var(--m);
+    -webkit-mask-size:100% 100%;mask-size:100% 100%}
+
+  .rule{width:640px;height:1px;margin:26px 0 18px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent)}
+
+  .sub{font-family:"Cormorant Garamond",serif;font-style:italic;font-weight:300;
+    font-size:74px;line-height:1;color:#fff;letter-spacing:.03em;
+    text-shadow:0 3px 26px rgba(0,0,0,.8)}
+  .subkr{margin-top:16px;font-family:Pretendard,sans-serif;font-weight:400;font-size:27px;
+    letter-spacing:.30em;color:rgba(255,255,255,.72);text-indent:.30em}
+
+  .release{margin-top:34px;font-family:Oswald,sans-serif;font-weight:500;font-size:31px;
+    letter-spacing:.22em;color:#fff;text-indent:.22em;
+    border-top:1px solid rgba(255,255,255,.3);border-bottom:1px solid rgba(255,255,255,.3);
+    padding:13px 40px}
+
+  .billing{margin-top:30px;max-width:1010px;text-align:center;
+    font-family:Oswald,sans-serif;font-weight:200;font-size:12.5px;line-height:1.62;
+    letter-spacing:.045em;color:rgba(255,255,255,.5);
+    transform:scaleY(1.22);transform-origin:top center}
+  .billing b{font-weight:500;color:rgba(255,255,255,.62)}
+
+  .disclaim{margin-top:26px;font-family:Pretendard,sans-serif;font-weight:500;font-size:13px;
+    letter-spacing:.16em;color:rgba(255,255,255,.34)}
+</style>
+
+<div class="sheet">
+  <img class="kv" id="kv" src="kv.jpg">
+  <div class="grade"></div>
+  <div class="vig"></div>
+
+  <div class="tag">THE CITY NEVER SLEEPS — NEITHER DOES HE</div>
+
+  <div class="titlezone">
+    <div class="title" id="title">SPIDER-MAN<div class="webmask" id="wm"></div></div>
+    <div class="rule"></div>
+    <div class="sub">Nightfall</div>
+    <div class="subkr">스파이더맨 : 나이트폴</div>
+
+    <div class="release">2026 SUMMER · ONLY IN THEATERS</div>
+
+    <!-- 빌링 블록: 실제 영화 크레딧이 아니라 조판 연습용 가상 크레딧 -->
+    <div class="billing">
+      NIGHTFALL PICTURES PRESENTS &nbsp;A HARBOR LANE PRODUCTION&nbsp; A FILM BY J. SEO &nbsp;“SPIDER-MAN: NIGHTFALL”&nbsp;
+      CASTING BY <b>M. HAN</b> &nbsp;MUSIC SUPERVISOR <b>D. OH</b> &nbsp;MUSIC BY <b>Y. LIM</b> &nbsp;COSTUME DESIGNER <b>S. JUNG</b><br>
+      EDITED BY <b>H. KWON</b> &nbsp;PRODUCTION DESIGNER <b>K. BAE</b> &nbsp;DIRECTOR OF PHOTOGRAPHY <b>T. NAM</b> &nbsp;EXECUTIVE PRODUCERS <b>R. CHOI</b> <b>E. YANG</b><br>
+      PRODUCED BY <b>J. PARK</b> <b>A. SHIN</b> &nbsp;STORY BY <b>W. KO</b> &nbsp;SCREENPLAY BY <b>J. SEO</b> <b>W. KO</b> &nbsp;DIRECTED BY <b>J. SEO</b>
+    </div>
+
+    <div class="disclaim">FAN-MADE CONCEPT POSTER · 하버스쿨 AI 교육 7주차 디자인 과제 · 비상업용</div>
+  </div>
+</div>
+
+<script>
+  // ?kv=2 → 실루엣 웹스윙 버전(B). 배경이 밝은 오렌지 하늘이라 상단 태그라인을 어둡게 보정.
+  if (new URLSearchParams(location.search).get('kv') === '2') {
+    document.getElementById('kv').src = 'kv2.jpg';
+    document.querySelector('.tag').style.color = 'rgba(255,255,255,.95)';
+    document.querySelector('.grade').style.background =
+      'linear-gradient(180deg, rgba(5,6,12,.55) 0%, rgba(5,6,12,.08) 20%, rgba(5,6,12,0) 36%),' +
+      'linear-gradient(0deg,  rgba(5,6,12,.98) 0%, rgba(5,6,12,.93) 19%, rgba(5,6,12,.6) 32%, rgba(5,6,12,0) 48%)';
+  }
+
+  // 타이틀 글자 모양에만 웹 패턴이 얹히도록 텍스트를 마스크로 사용
+  const svg = encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1210" height="180">
+       <text x="50%" y="76%" text-anchor="middle" font-family="Anton" font-size="171"
+             letter-spacing="0.005em" fill="#fff">SPIDER-MAN</text>
+     </svg>`);
+  document.getElementById('wm').style.setProperty('--m', `url("data:image/svg+xml,${svg}")`);
+</script>
