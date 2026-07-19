@@ -9,53 +9,44 @@
   .mono{font-family:'Space Mono',monospace}
 
   .poster{width:1080px;height:1350px;position:relative;overflow:hidden;background:var(--ink);
-    padding:70px 76px 44px;display:flex;flex-direction:column}
+    padding:60px 68px 40px;display:flex;flex-direction:column}
   .poster::before{content:"";position:absolute;inset:0;opacity:.05;pointer-events:none;z-index:0;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
   .poster::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
-    background:radial-gradient(110% 55% at 30% 8%, rgba(255,90,31,.16), transparent 62%)}
+    background:radial-gradient(100% 45% at 50% 42%, rgba(255,90,31,.14), transparent 60%)}
   .z{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
 
-  /* 상단 라벨 행 */
   .top{display:flex;justify-content:space-between;align-items:baseline;
     font-size:16px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}
   .top b{color:var(--ember);font-weight:700}
 
-  /* 초대형 타이포 */
-  .big{margin-top:64px;font-weight:700;letter-spacing:-.035em;color:var(--paper);
-    line-height:.82;font-size:248px}
+  /* 헤드라인 — 타이포(상단 40%가 아닌 압축) */
+  .head{margin-top:20px}
+  .big{font-weight:700;letter-spacing:-.035em;color:var(--paper);line-height:.84;font-size:158px}
   .big em{font-style:normal;color:var(--ember)}
-  .kor{margin-top:34px;font-size:46px;font-weight:600;letter-spacing:-.02em;color:var(--paper);
-    line-height:1.25}
-  .kor .u{color:var(--ember)}
+  .sub{margin-top:16px;font-size:29px;font-weight:600;letter-spacing:-.02em;color:var(--paper)}
+  .sub .u{color:var(--ember)}
 
-  /* 여백 스페이서 */
-  .spacer{flex:1}
+  /* 큰 히어로 비주얼 (50%+) */
+  .hero{flex:1;min-height:0;position:relative;margin:6px -20px 0}
+  .hero img{width:100%;height:100%;object-fit:contain;display:block}
 
-  /* 하단: 제품 정보 + 작은 비주얼 */
-  .info{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;
-    border-top:1px solid var(--line);padding-top:34px}
-  .info .l{flex:1}
-  .info .season{display:inline-block;background:var(--ember);color:var(--ink);
-    font-family:'Space Mono',monospace;font-size:15px;font-weight:700;letter-spacing:.16em;
-    text-transform:uppercase;padding:7px 16px}
-  .info .nm{margin-top:20px;font-size:52px;font-weight:700;letter-spacing:-.025em;color:var(--paper);
-    line-height:1}
-  .info .notes{margin-top:16px;font-size:17px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted)}
-  .info .row{margin-top:22px;display:flex;align-items:baseline;gap:22px}
-  .info .roast{font-family:'Space Mono',monospace;font-size:14px;letter-spacing:.16em;
-    text-transform:uppercase;color:#fcd34d;border:1px solid rgba(252,211,77,.4);padding:6px 13px}
-  .info .price{font-family:'Space Mono',monospace;font-size:40px;font-weight:700;color:var(--paper)}
-  .info .price small{font-size:18px;color:var(--muted);margin-left:8px;letter-spacing:.1em}
-  .info .bag{width:220px;flex:none}
-  .info .bag img{width:100%;display:block;filter:drop-shadow(0 20px 36px rgba(0,0,0,.6))}
+  /* 정보 바 */
+  .bar{display:flex;align-items:center;gap:22px;border-top:1px solid var(--line);padding-top:22px}
+  .bar .season{background:var(--ember);color:var(--ink);font-family:'Space Mono',monospace;
+    font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:8px 14px;flex:none}
+  .bar .nm{font-size:38px;font-weight:700;letter-spacing:-.02em;color:var(--paper);flex:none}
+  .bar .notes{font-family:'Space Mono',monospace;font-size:14px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);flex:1}
+  .bar .roast{font-family:'Space Mono',monospace;font-size:13px;letter-spacing:.14em;
+    text-transform:uppercase;color:#fcd34d;border:1px solid rgba(252,211,77,.4);padding:6px 11px;flex:none}
+  .bar .price{font-family:'Space Mono',monospace;font-size:34px;font-weight:700;color:var(--paper);flex:none}
+  .bar .price small{font-size:16px;color:var(--muted);margin-left:6px}
 
-  /* 푸터 */
-  .foot{margin-top:30px;display:flex;justify-content:space-between;align-items:center}
-  .foot .b{font-size:22px;font-weight:700;letter-spacing:-.01em;color:var(--paper)}
+  .foot{margin-top:22px;display:flex;justify-content:space-between;align-items:center}
+  .foot .b{font-size:21px;font-weight:700;letter-spacing:-.01em;color:var(--paper)}
   .foot .b sup{color:var(--ember)}
-  .foot .h{font-family:'Space Mono',monospace;font-size:14px;letter-spacing:.16em;
+  .foot .h{font-family:'Space Mono',monospace;font-size:13px;letter-spacing:.16em;
     text-transform:uppercase;color:var(--muted)}
 </style>
 
@@ -63,24 +54,21 @@
  <div class="z">
   <div class="top"><span>(New Arrival)</span><span><b>2026</b> Summer Drop</span></div>
 
-  <!-- 초대형 타이포 -->
-  <div class="big">SUMMER<br><em>DROP.</em></div>
-  <div class="kor">여름에만 볶는 <span class="u">한 봉지</span>.<br>갓 볶은 에티오피아 내추럴이 도착했습니다.</div>
+  <div class="head">
+    <div class="big">SUMMER <em>DROP.</em></div>
+    <div class="sub">여름에만 볶는 <span class="u">한 봉지</span> — 갓 볶은 에티오피아 내추럴이 도착했습니다.</div>
+  </div>
 
-  <div class="spacer"></div>
+  <!-- 큰 히어로 비주얼 -->
+  <div class="hero"><img src="생성이미지/ember_히어로.svg" alt="에티오피아 구지 내추럴 원두"></div>
 
-  <!-- 제품 정보 + 작은 원두백 -->
-  <div class="info">
-    <div class="l">
-      <span class="season">여름 시즌 한정 · 300봉</span>
-      <div class="nm">에티오피아 구지</div>
-      <div class="notes">Strawberry · Peach · Jasmine</div>
-      <div class="row">
-        <span class="roast">Natural · Light Roast</span>
-        <span class="price">₩23,000<small>/ 200G</small></span>
-      </div>
-    </div>
-    <div class="bag"><img src="생성이미지/ember_썸머백.svg" alt="에티오피아 구지 내추럴"></div>
+  <!-- 정보 바 -->
+  <div class="bar">
+    <span class="season">여름 한정 · 300봉</span>
+    <span class="nm">에티오피아 구지</span>
+    <span class="notes"></span>
+    <span class="roast">Natural · Light Roast</span>
+    <span class="price">₩23,000<small>/200G</small></span>
   </div>
 
   <div class="foot">

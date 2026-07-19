@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+  <defs>
+    <linearGradient id="bag" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#141210"/>
+      <stop offset="0.5" stop-color="#26241f"/>
+      <stop offset="1" stop-color="#0e0c0a"/>
+    </linearGradient>
+    <linearGradient id="foil" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8f8478"/>
+      <stop offset="0.5" stop-color="#d3cabe"/>
+      <stop offset="1" stop-color="#7d7266"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#ff5a1f" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#ff5a1f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bean" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#3a2617"/>
+      <stop offset="1" stop-color="#160f09"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 앰버 글로우 -->
+  <ellipse cx="480" cy="300" rx="420" ry="360" fill="url(#glow)"/>
+
+  <!-- 원두 그룹 정의 -->
+  <g id="beans">
+    <!-- helper drawn inline below -->
+  </g>
+
+  <!-- 바닥 그림자 -->
+  <ellipse cx="480" cy="600" rx="360" ry="52" fill="#000" opacity="0.45"/>
+
+  <!-- 큰 원두백 -->
+  <g>
+    <path d="M330 150 h300 v410 a20 20 0 0 1 -20 20 h-260 a20 20 0 0 1 -20 -20 z" fill="url(#bag)"/>
+    <rect x="348" y="150" width="14" height="430" fill="#ffffff" opacity="0.05"/>
+    <rect x="600" y="150" width="22" height="430" fill="#000" opacity="0.30"/>
+
+    <!-- 상단 실링 -->
+    <path d="M318 104 h324 l-18 46 h-288 z" fill="url(#foil)"/>
+    <g stroke="#0b0a09" stroke-width="3" opacity="0.4">
+      <line x1="342" y1="108" x2="330" y2="150"/><line x1="390" y1="108" x2="384" y2="150"/>
+      <line x1="438" y1="108" x2="436" y2="150"/><line x1="486" y1="108" x2="486" y2="150"/>
+      <line x1="534" y1="108" x2="538" y2="150"/><line x1="582" y1="108" x2="590" y2="150"/>
+      <line x1="624" y1="108" x2="636" y2="150"/>
+    </g>
+
+    <!-- ✳ + NEW DROP -->
+    <text x="480" y="228" text-anchor="middle" fill="#ff5a1f"
+      font-family="'Space Grotesk',sans-serif" font-size="52" font-weight="700">✳</text>
+    <text x="480" y="278" text-anchor="middle" fill="#ece6dc"
+      font-family="'Space Mono',monospace" font-size="22" letter-spacing="6" font-weight="700">NEW DROP</text>
+    <line x1="376" y1="300" x2="584" y2="300" stroke="#3a352e" stroke-width="2"/>
+
+    <!-- 앰버 라벨 -->
+    <rect x="330" y="336" width="300" height="96" fill="#ff5a1f"/>
+    <text x="480" y="378" text-anchor="middle" fill="#0b0a09"
+      font-family="'Space Mono',monospace" font-size="28" font-weight="700" letter-spacing="2">ETHIOPIA</text>
+    <text x="480" y="410" text-anchor="middle" fill="#0b0a09"
+      font-family="'Space Mono',monospace" font-size="18" letter-spacing="4">GUJI · NATURAL</text>
+
+    <!-- 컵노트 -->
+    <text x="480" y="470" text-anchor="middle" fill="#8b8178"
+      font-family="'Space Mono',monospace" font-size="16" letter-spacing="3">STRAWBERRY · PEACH · JASMINE</text>
+    <text x="480" y="522" text-anchor="middle" fill="#ece6dc"
+      font-family="'Space Mono',monospace" font-size="13" letter-spacing="4" opacity="0.85">ROASTED TO ORDER · 200G · LIGHT</text>
+  </g>
+
+  <!-- 원두 더미 (바닥에 넓게) -->
+  <g stroke="#0c0803" stroke-width="1.4">
+    <g fill="url(#bean)">
+      <ellipse cx="180" cy="600" rx="22" ry="14" transform="rotate(-20 180 600)"/>
+      <ellipse cx="232" cy="614" rx="22" ry="14" transform="rotate(12 232 614)"/>
+      <ellipse cx="286" cy="600" rx="22" ry="14" transform="rotate(-8 286 600)"/>
+      <ellipse cx="150" cy="622" rx="22" ry="14" transform="rotate(26 150 622)"/>
+      <ellipse cx="210" cy="636" rx="22" ry="14" transform="rotate(-14 210 636)"/>
+      <ellipse cx="700" cy="602" rx="22" ry="14" transform="rotate(16 700 602)"/>
+      <ellipse cx="752" cy="616" rx="22" ry="14" transform="rotate(-10 752 616)"/>
+      <ellipse cx="806" cy="600" rx="22" ry="14" transform="rotate(22 806 600)"/>
+      <ellipse cx="732" cy="636" rx="22" ry="14" transform="rotate(-18 732 636)"/>
+      <ellipse cx="792" cy="640" rx="22" ry="14" transform="rotate(8 792 640)"/>
+      <ellipse cx="470" cy="628" rx="22" ry="14" transform="rotate(-6 470 628)"/>
+      <ellipse cx="520" cy="640" rx="22" ry="14" transform="rotate(14 520 640)"/>
+    </g>
+    <g stroke="#000" stroke-width="1.6" fill="none" opacity="0.6">
+      <path d="M170 597 q10 8 20 0"/><path d="M222 611 q10 8 20 0"/><path d="M276 597 q10 8 20 0"/>
+      <path d="M140 619 q10 8 20 0"/><path d="M200 633 q10 8 20 0"/>
+      <path d="M690 599 q10 8 20 0"/><path d="M742 613 q10 8 20 0"/><path d="M796 597 q10 8 20 0"/>
+      <path d="M722 633 q10 8 20 0"/><path d="M782 637 q10 8 20 0"/>
+      <path d="M460 625 q10 8 20 0"/><path d="M510 637 q10 8 20 0"/>
+    </g>
+  </g>
+</svg>
