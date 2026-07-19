@@ -1,0 +1,90 @@
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;background:#141416;
+    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  :root{--bg:#141416;--card:#1d1d20;--line:#2c2c31;--tx:#e7e6e4;--mut:#8d8b88;
+    --u:#3182F6;--a:#FF6F0F;--gr:#37b26b;--rd:#ff5f57}
+  .wrap{width:1080px;background:var(--bg);padding:48px 56px 56px}
+
+  .bar{display:flex;align-items:center;gap:10px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+  .bar .dot{width:13px;height:13px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .bar .ttl{margin-left:12px;font-family:'Space Mono',monospace;font-size:19px;color:var(--tx);font-weight:700}
+  .bar .path{margin-left:auto;font-family:'Space Mono',monospace;font-size:14px;color:var(--mut)}
+
+  .sub{margin-top:20px;font-size:16px;color:var(--mut);line-height:1.6}
+  .sub b{color:var(--tx)}
+
+  .turn{margin-top:24px}
+  .who{font-family:'Space Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.08em;
+    display:flex;align-items:center;gap:9px}
+  .who .tag{width:9px;height:9px;border-radius:2px}
+  .u .who{color:#6ea8ff}.u .tag{background:var(--u)}
+  .a .who{color:#ffa268}.a .tag{background:var(--a)}
+  .msg{margin-top:9px;padding:16px 20px;border-radius:12px;font-size:19px;line-height:1.5;color:var(--tx)}
+  .u .msg{background:rgba(49,130,246,.11);border:1px solid rgba(49,130,246,.3)}
+  .a .msg{background:var(--card);border:1px solid var(--line);color:#cfcecb;font-size:18px}
+  .a .msg b{color:var(--tx)}
+  .a .msg .bug{color:#ff8f7a;font-weight:700}
+  .a .msg .ok{color:var(--gr);font-weight:700}
+
+  .tblwrap{margin-top:30px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tblwrap .th{background:#232327;padding:12px 20px;font-family:'Space Mono',monospace;
+    font-size:14px;letter-spacing:.1em;color:var(--a);font-weight:700}
+  table{width:100%;border-collapse:collapse}
+  td{padding:12px 20px;font-size:16px;color:#cfcecb;border-top:1px solid var(--line);vertical-align:top}
+  td:first-child{color:var(--tx);font-weight:700;width:210px}
+  td .fix{color:var(--gr);font-weight:700}
+  .foot{margin-top:26px;font-family:'Space Mono',monospace;font-size:13px;color:var(--mut);text-align:center}
+</style>
+
+<div class="wrap">
+  <div class="bar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">Claude Code — 에이전트 대화 기록</span>
+    <span class="path">7주차 · Q1 [Final] 당근마켓 클론</span>
+  </div>
+  <div class="sub">실제 세션에서 오간 대화입니다. <b>지시 → 빌드 → 버그 발견 → 수정</b>의 반복을 그대로 기록 — 지어낸 내용 없음.</div>
+
+  <div class="turn u"><div class="who"><span class="tag"></span>나</div>
+    <div class="msg">7Week 퀘스트 당근마켓 클론을 제작해보자</div></div>
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">퀘스트 스펙 파싱 — Auth+DB+Storage+채팅 통합. 5주차 <b>프론트온리 supabase-js</b> 방식(서버 없는 단일 index.html)으로 결정. Supabase 프로젝트가 일시정지 상태라 복구부터 진행합니다.</div></div>
+
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg"><span class="bug">함정 발견</span> — 복구 직후 기동 중(COMING_UP)에 실행한 마이그레이션이 <b>success를 반환하고도 반영되지 않았습니다.</b> pg_tables로 실재 확인 후 재적용 → 테이블 5개 + <b>RLS 정책 14개</b> 생성 완료.</div></div>
+
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">브라우저 실동작 검증 중 <span class="bug">레이아웃 버그</span> — 하단 고정 바에 <b>.app-shell</b>을 재사용했는데 이 클래스의 <b>min-height:100vh</b>를 물려받아 바가 화면 전체를 덮고 클릭을 삼켰습니다. <b>.app-bar</b>로 분리해 <span class="ok">수정</span>.</div></div>
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">제3자 계정으로 <b>RLS 공격 검증 7/7 차단</b> — 남의 상품 수정·삭제, 남의 채팅 열람·주입, user_id 위조 전부 막힘. 폴링도 확인: 페이지를 열어둔 채 외부에서 메시지를 넣으면 <b>새로고침 없이</b> 화면에 등장.</div></div>
+
+  <div class="turn u"><div class="who"><span class="tag"></span>나</div>
+    <div class="msg">메일 인증off는 너가 해</div></div>
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">앞서 "대시보드에서만 가능"이라고 말씀드린 건 <span class="bug">제가 틀렸습니다</span>. <b>Management API</b>로 <b>mailer_autoconfirm=true</b> 설정해 껐습니다. 신규 계정으로 가입→프로필→채팅방→메시지→찜 전 구간 우회 없이 <span class="ok">재검증 통과</span>.</div></div>
+
+  <div class="turn u"><div class="who"><span class="tag"></span>나</div>
+    <div class="msg">시연영상도 작업해줘</div></div>
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">Playwright 헤드리스 녹화로 제작하던 중 <span class="bug">치명적 버그 발견</span> — 가입이 성공해도 홈이 아니라 <b>"동네를 설정해 주세요" 온보딩에 갇혔습니다.</b> 메일 인증을 끄면서 처음 열린 경로였습니다.</div></div>
+  <div class="turn a"><div class="who"><span class="tag"></span>에이전트</div>
+    <div class="msg">원인 — 가입 직후 프로필을 넣지만 AuthProvider의 <b>profile이 계속 null</b>이라 라우터가 온보딩으로 보냄. <b>1차 수정도 실패</b>했습니다: reloadProfile이 렌더 시점의 session(=null)을 클로저로 잡고 있었음. <b>세션을 직접 조회</b>하도록 고쳐 <span class="ok">해결</span> → 배포본 기준 <b>37.7초</b> 시연 영상 녹화 완료.</div></div>
+
+  <div class="tblwrap">
+    <div class="th">발견 → 수정 (반복 개선 기록)</div>
+    <table>
+      <tr><td>마이그레이션 유실</td><td>복구 직후 success인데 미반영 → <span class="fix">pg_tables 실재 확인 후 재적용</span></td></tr>
+      <tr><td>하단 바가 클릭 차단</td><td>.app-shell의 min-height:100vh 상속 → <span class="fix">.app-bar 분리</span></td></tr>
+      <tr><td>FAB 위치 하드코딩</td><td>calc(50%+240px) 좁은 화면서 깨짐 → <span class="fix">중앙정렬 래퍼로 교체</span></td></tr>
+      <tr><td>가입 후 온보딩에 갇힘</td><td>profile 갱신 누락 → <span class="fix">reloadProfile 호출 + 세션 직접 조회</span></td></tr>
+      <tr><td>온보딩 중복 제출</td><td>PK 중복으로 막힘 → <span class="fix">insert → upsert</span></td></tr>
+      <tr><td>스크린샷 여백 과다</td><td>뷰포트 미적용 → <span class="fix">440×880으로 재촬영</span></td></tr>
+    </table>
+  </div>
+
+  <div class="foot">배포 https://carrot-market-clone-ashen.vercel.app · RLS 14정책 / 공격검증 7·7 차단 / 시연영상 37.7s</div>
+</div>

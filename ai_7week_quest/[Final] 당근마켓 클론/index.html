@@ -218,12 +218,20 @@ function AuthProvider({ children }) {
     return () => { alive = false; sub.subscription.unsubscribe(); };
   }, [loadProfile]);
 
+  // 세션을 그때그때 직접 조회한다.
+  // state 의 session 을 클로저로 잡으면, 가입 직후처럼 "방금 로그인됐지만
+  // 이 렌더의 session 은 아직 null" 인 시점에 프로필을 못 읽는다.
+  const reloadProfile = useCallback(async () => {
+    const { data } = await sb.auth.getSession();
+    return loadProfile(data.session?.user?.id);
+  }, [loadProfile]);
+
   const value = {
     session,
     user: session?.user ?? null,
     profile,
     loading,
-    reloadProfile: () => loadProfile(session?.user?.id),
+    reloadProfile,
     signOut: () => sb.auth.signOut(),
   };
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
@@ -252,6 +260,7 @@ async function uploadImages(files, uid) {
 // 📄 로그인 / 회원가입  (Part 1)
 // ============================================================
 function AuthPage() {
+  const { reloadProfile } = useAuth();
   const [mode, setMode] = useState('login');   // login | signup
   const [form, setForm] = useState({ email: '', password: '', nickname: '', region: '' });
   const [err, setErr] = useState('');
@@ -279,6 +288,9 @@ function AuthPage() {
           id: data.session.user.id, nickname: form.nickname.trim(), region: form.region.trim(),
         });
         if (pErr) throw pErr;
+        // 컨텍스트의 profile 을 갱신하지 않으면 온보딩 화면으로 튕긴다
+        // (onAuthStateChange 는 이 insert 보다 먼저 돌아 profile=null 을 들고 있다)
+        await reloadProfile();
         go('/');
       } else {
         const { error } = await sb.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
@@ -373,7 +385,8 @@ function OnboardingPage() {
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
-    const { error } = await sb.from('carrot_profiles').insert({
+    // upsert — 이미 프로필이 있는 상태로 이 화면에 들어와도 PK 중복으로 막히지 않게
+    const { error } = await sb.from('carrot_profiles').upsert({
       id: user.id, nickname: nickname.trim(), region: region.trim(),
     });
     setBusy(false);
