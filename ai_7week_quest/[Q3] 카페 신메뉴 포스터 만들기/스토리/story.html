@@ -1,0 +1,83 @@
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1920px;overflow:hidden;
+    font-family:'Space Grotesk','Apple SD Gothic Neo','Pretendard',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  :root{--ink:#0b0a09;--paper:#ece6dc;--ember:#ff5a1f;--muted:#8b8178;--line:rgba(255,255,255,.14)}
+  .mono{font-family:'Space Mono',monospace}
+
+  .story{width:1080px;height:1920px;position:relative;overflow:hidden;background:var(--ink);
+    padding:96px 76px 88px;display:flex;flex-direction:column}
+  .story::before{content:"";position:absolute;inset:0;opacity:.05;pointer-events:none;z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  .story::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(80% 40% at 50% 46%, rgba(255,90,31,.16), transparent 62%)}
+  .z{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
+
+  /* 상단 계정 바 (스토리 느낌) */
+  .acct{display:flex;align-items:center;gap:16px}
+  .acct .av{width:64px;height:64px;border-radius:50%;background:var(--ember);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:32px;flex:none}
+  .acct .nm{font-size:26px;font-weight:700;color:var(--paper);letter-spacing:-.01em}
+  .acct .nm span{color:var(--muted);font-weight:500;font-size:20px}
+  .acct .t{margin-left:auto;font-family:'Space Mono',monospace;font-size:18px;color:var(--muted)}
+
+  .kick{margin-top:64px;font-family:'Space Mono',monospace;font-size:22px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--ember);font-weight:700}
+  .big{margin-top:20px;font-weight:700;letter-spacing:-.035em;color:var(--paper);
+    line-height:.84;font-size:190px}
+  .big em{font-style:normal;color:var(--ember)}
+  .sub{margin-top:26px;font-size:34px;font-weight:600;letter-spacing:-.02em;color:var(--paper);
+    line-height:1.4}
+  .sub .u{color:var(--ember)}
+
+  .hero{flex:1;min-height:0;margin:10px -10px 0}
+  .hero img{width:100%;height:100%;object-fit:contain;display:block}
+
+  .bar{display:flex;align-items:center;gap:26px;border-top:1px solid var(--line);padding:30px 0}
+  .bar .season{background:var(--ember);color:var(--ink);font-family:'Space Mono',monospace;
+    font-size:19px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:10px 16px;flex:none}
+  .bar .nm{font-size:44px;font-weight:700;letter-spacing:-.02em;color:var(--paper);flex:1}
+  .bar .price{font-family:'Space Mono',monospace;font-size:44px;font-weight:700;color:var(--paper);flex:none}
+  .bar .price small{font-size:20px;color:var(--muted);margin-left:6px}
+
+  /* 하단 CTA */
+  .cta{background:var(--ember);color:var(--ink);border-radius:999px;padding:26px 0;text-align:center;
+    font-size:32px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;
+    justify-content:center;gap:14px}
+  .foot{margin-top:26px;display:flex;justify-content:space-between;align-items:center}
+  .foot .b{font-size:24px;font-weight:700;color:var(--paper)}
+  .foot .b sup{color:var(--ember)}
+  .foot .h{font-family:'Space Mono',monospace;font-size:17px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted)}
+</style>
+
+<div class="story">
+ <div class="z">
+  <div class="acct">
+    <div class="av">E</div>
+    <div class="nm">ember.roasters <span>· Specialty Coffee</span></div>
+    <div class="t">now</div>
+  </div>
+
+  <div class="kick">New Arrival · 2026 Summer</div>
+  <div class="big">SUMMER <em>DROP.</em></div>
+  <div class="sub">여름에만 볶는 <span class="u">한 봉지</span> —<br>갓 볶은 에티오피아 내추럴이 도착했습니다.</div>
+
+  <div class="hero"><img src="../생성이미지/ember_히어로.svg" alt="에티오피아 구지 내추럴"></div>
+
+  <div class="bar">
+    <span class="season">여름 한정 · 300봉</span>
+    <span class="nm">에티오피아 구지</span>
+    <span class="price">₩23,000<small>/200G</small></span>
+  </div>
+
+  <div class="cta">☕ 프로필 링크에서 주문하기 →</div>
+  <div class="foot">
+    <div class="b">EMBER ROASTERS<sup>®</sup></div>
+    <div class="h">@ember.roasters · Roasted to Order</div>
+  </div>
+ </div>
+</div>
