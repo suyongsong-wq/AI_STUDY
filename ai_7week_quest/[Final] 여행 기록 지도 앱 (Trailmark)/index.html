@@ -4,9 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trailmark — 여행 기록 지도</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>" />
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- 폰트: Outfit(디스플레이) + Pretendard(한글 본문) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -15,47 +22,96 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    :root { --ink:#2b2420; --cream:#faf6f0; --teal:#0f766e; --coral:#e07a5f; }
-    body { font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif; }
-    .serif { font-family:'Georgia','Times New Roman',serif; }
+    /* ── 오로라 팔레트 (민트 → 시안 → 블루 → 퍼플) ── */
+    :root {
+      --g1:#5EEAD4; --g2:#38BDF8; --g3:#4F46E5; --g4:#6D28D9;
+      --aurora: linear-gradient(180deg, var(--g1) 0%, var(--g2) 34%, var(--g3) 70%, var(--g4) 100%);
+      --ink:#0B1020; --mist:rgba(255,255,255,.72);
+    }
+    body { font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif; color:var(--ink); }
+    .display { font-family:'Outfit','Pretendard',sans-serif; letter-spacing:-.02em; }
+    .mono-tag { font-family:'Outfit',monospace; font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+
     #map { height:100%; width:100%; transition:background .4s ease; }
-    #map.real    { background:#a9d3e0; }
-    #map.scratch { background:#0f1b2b; }
+    #map.real    { background:#bfe3ee; }
+    #map.scratch { background:#140F2E; }          /* 그라데이션 끝단과 이어지는 딥 퍼플 바다 */
 
+    /* 방문지 핀 — 대륙 색 2톤 그라데이션(작은 요소) */
     .pin { display:flex; align-items:center; justify-content:center; width:34px; height:34px;
-      background:var(--coral); border:3px solid #fff; border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg); box-shadow:0 3px 8px rgba(0,0,0,.35); font-size:15px; }
+      background:linear-gradient(150deg, var(--c,#818CF8), var(--c2,#4F46E5)); border:3px solid #fff;
+      border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+      box-shadow:0 3px 10px rgba(11,16,32,.35); font-size:15px; }
     .pin span { transform:rotate(45deg); }
-    .pin.active { background:var(--teal); transform:rotate(-45deg) scale(1.25); z-index:1000; }
+    .pin.active { transform:rotate(-45deg) scale(1.28);
+      box-shadow:0 0 0 4px rgba(255,255,255,.55),0 6px 16px rgba(11,16,32,.45); z-index:1000; }
 
+    /* 국가명 라벨 */
     .ctry-label { background:transparent; border:none; box-shadow:none; padding:0;
-      font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+      font-family:'Outfit','Pretendard',sans-serif; font-weight:600; font-size:11px;
+      letter-spacing:.02em; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.75); }
     .ctry-label::before { display:none; }
     .leaflet-tooltip.ctry-label { white-space:nowrap; }
 
-    #map.scratch .ctry-hover { filter:drop-shadow(0 0 7px rgba(242,193,78,.85)); }
-    #map.real    .ctry-hover { filter:drop-shadow(0 0 5px rgba(224,122,95,.6)); }
+    #map.scratch .ctry-hover { filter:drop-shadow(0 0 8px rgba(94,234,212,.9)); }
+    #map.real    .ctry-hover { filter:drop-shadow(0 0 6px rgba(79,70,229,.65)); }
     #map.adding  { cursor:crosshair; }
 
+    /* 클릭 시 브라우저 기본 포커스 링(사각형) 제거 —
+       Leaflet이 path에 tabindex를 붙여 바운딩 박스에 네모가 그려지는 문제 */
+    #map .leaflet-interactive:focus { outline:none; }
+    /* 키보드 탐색(Tab)일 때만, 사각형 대신 국경선을 따라 강조 */
+    #map .leaflet-interactive:focus-visible { outline:none; stroke:#5EEAD4; stroke-width:2.5px; }
+    .leaflet-container:focus, .leaflet-container:focus-visible { outline:none; }
+
     .leaflet-popup-content { margin:10px 14px; font-family:inherit; }
-    .card-scroll::-webkit-scrollbar { width:8px; }
-    .card-scroll::-webkit-scrollbar-thumb { background:#d8cabb; border-radius:8px; }
-    .fade-in { animation:fade .35s ease both; }
-    @keyframes fade { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+    .leaflet-popup-content-wrapper { border-radius:14px; }
 
-    .seg { background:rgba(255,255,255,.9); backdrop-filter:blur(6px); border-radius:999px; padding:3px;
-      box-shadow:0 4px 14px rgba(0,0,0,.18); display:inline-flex; gap:2px; }
-    .seg button { border:none; background:transparent; font-size:12px; font-weight:600; color:#8a7d70;
-      padding:6px 13px; border-radius:999px; cursor:pointer; transition:all .2s; }
-    .seg button.on { background:var(--teal); color:#fff; }
+    .card-scroll::-webkit-scrollbar { width:6px; }
+    .card-scroll::-webkit-scrollbar-thumb { background:#d3d9e8; border-radius:8px; }
+    .fade-in { animation:fade .35s cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes fade { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
 
-    .inp { width:100%; border:1px solid #e3d8c8; border-radius:10px; padding:9px 11px; font-size:14px; background:#fff; }
-    .inp:focus { outline:2px solid #0f766e33; border-color:var(--teal); }
-    .btn-p { background:var(--teal); color:#fff; font-weight:600; border-radius:10px; padding:10px 16px; font-size:14px; }
+    /* 그라데이션은 '작은 요소'에만 — 로고 배지 / 14% 숫자 / 진행바. 그 외엔 팔레트 단색 */
+    .aurora     { background:var(--aurora); }
+    .aurora-bar { background:linear-gradient(90deg,var(--g1),var(--g2) 40%,var(--g3) 75%,var(--g4)); }
+    .aurora-text { background:linear-gradient(120deg,var(--g2),var(--g3) 55%,var(--g4));
+                   -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .glass-strong { background:rgba(255,255,255,.92); backdrop-filter:blur(14px); }
+    .panel { background:#F7F8FB; }
+
+    /* 여권 스탬프 느낌의 통계 타일 */
+    .stamp { border:1.5px dashed #d7dcea; border-radius:14px; background:#fff; }
+
+    /* 포스트카드 카드 — 절취선(퍼포레이션) */
+    .postcard { border-radius:18px; overflow:hidden; background:#fff; border:1px solid #e7eaf3;
+      box-shadow:0 2px 8px rgba(11,16,32,.06); transition:transform .2s, box-shadow .2s, border-color .2s; }
+    .postcard:hover { transform:translateY(-2px); box-shadow:0 10px 24px rgba(11,16,32,.12); }
+    .postcard.on { border-color:var(--g3); box-shadow:0 0 0 2px rgba(79,70,229,.18),0 10px 24px rgba(11,16,32,.12); }
+    .perf { height:0; border-top:1.5px dashed rgba(11,16,32,.16); position:relative; }
+    .perf::before, .perf::after { content:""; position:absolute; top:-6px; width:12px; height:12px;
+      border-radius:50%; background:var(--notch,#7fb8e8); }
+    .perf::before { left:-6px; } .perf::after { right:-6px; }
+
+    /* 모드 토글 */
+    .seg { background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-radius:999px; padding:3px;
+      box-shadow:0 6px 18px rgba(11,16,32,.22); display:inline-flex; gap:2px; }
+    .seg button { border:none; background:transparent; font-size:12px; font-weight:600; color:#5b6478;
+      padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .2s; font-family:'Outfit','Pretendard',sans-serif; }
+    .seg button.on { background:var(--g3); color:#fff; }
+
+    /* 폼 */
+    .inp { width:100%; border:1px solid #dfe3ee; border-radius:12px; padding:10px 12px; font-size:14px; background:#fff; }
+    .inp:focus { outline:3px solid rgba(79,70,229,.18); border-color:var(--g3); }
+    .btn-p { background:var(--g3); color:#fff; font-weight:600;
+      border-radius:12px; padding:11px 16px; font-size:14px; transition:background .2s; }
+    .btn-p:hover:not(:disabled) { background:#4338CA; }
     .btn-p:disabled { opacity:.5; }
+    .btn-ghost { background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;
+      font-weight:600; border-radius:12px; padding:11px 16px; font-size:14px; transition:background .2s; }
+    .btn-ghost:hover { background:rgba(255,255,255,.28); }
   </style>
 </head>
-<body class="bg-[#faf6f0]">
+<body class="bg-[#0B1020]">
   <div id="root"></div>
 
   <script type="text/babel">
@@ -87,6 +143,10 @@
     };
     const metaOf = (iso3, engName) => META[iso3] || [engName, "🌍", "기타"];
 
+    // 사용자 입력이 Leaflet 팝업/핀 HTML에 들어가므로 이스케이프 (공유 지도 = 타인 입력)
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+      ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+
     // ── 도시 검색: 우리 도시 DB(tm_cities) 먼저 → 없으면 OSM Nominatim ──
     async function searchCities(q) {
       const safe = q.replace(/[%,()]/g, " ").trim();
@@ -108,8 +168,11 @@
       const rankOf = p => RANK[p.addresstype] ?? RANK[p.type] ?? 6;
 
       // 같은 이름·거의 같은 좌표는 하나로 접기 (역 출구 N개 방지)
-      const seen = new Set();
+      // — 도시 DB에서 이미 나온 결과도 시드해 OSM 중복(같은 osm_id → key 충돌) 방지
+      const seen = new Set(), seenIds = new Set();
+      out.forEach(c => { seenIds.add(c.osm_id); seen.add(`${c.name}@${c.lat.toFixed(2)},${c.lng.toFixed(2)}`); });
       const add = (p) => {
+        if (p.osm_id != null && seenIds.has(p.osm_id)) return;
         const name = p.name || String(p.display_name).split(",")[0];
         const lat = parseFloat(p.lat), lng = parseFloat(p.lon);
         const key = `${name}@${lat.toFixed(2)},${lng.toFixed(2)}`;
@@ -144,7 +207,12 @@
     }
 
     const TOTAL_CONTINENTS = 7;
-    const REVEAL = { "아시아":"#14b8a6","유럽":"#6366f1","북미":"#f97316","남미":"#eab308","아프리카":"#ec4899","오세아니아":"#22c55e","기타":"#0f766e" };
+    // 긁어냈을 때 드러나는 대륙별 컬러 — 오로라 팔레트 계열
+    const REVEAL = { "아시아":"#5EEAD4","유럽":"#38BDF8","북미":"#818CF8","남미":"#A78BFA",
+                     "아프리카":"#F472B6","오세아니아":"#34D399","기타":"#60A5FA" };
+    // 핀 그라데이션용 진한 톤
+    const DEEP   = { "아시아":"#14B8A6","유럽":"#0EA5E9","북미":"#4F46E5","남미":"#7C3AED",
+                     "아프리카":"#DB2777","오세아니아":"#059669","기타":"#2563EB" };
 
     // ─────────────────────────── 로그인 화면 ───────────────────────────
     function AuthScreen() {
@@ -164,21 +232,22 @@
       };
 
       return (
-        <div className="h-screen w-screen flex items-center justify-center bg-[#0f1b2b] px-4">
+        <div className="panel h-screen w-screen flex items-center justify-center px-4">
           <div className="w-full max-w-sm">
-            <div className="text-center mb-6">
-              <div className="text-4xl mb-2">🗺️</div>
-              <h1 className="text-2xl font-bold text-white serif">Trailmark</h1>
-              <p className="text-xs text-white/60 mt-1">Fill the world map with your own memories.</p>
+            <div className="text-center mb-7">
+              <div className="aurora w-14 h-14 rounded-2xl flex items-center justify-center text-[26px] mx-auto shadow-lg">🧭</div>
+              <h1 className="display text-3xl font-extrabold text-[#101527] mt-3">Trailmark</h1>
+              <p className="mono-tag text-[10px] text-[#9aa2b5] mt-1.5 uppercase tracking-widest">Travel Passport</p>
+              <p className="text-[13px] text-[#5b6478] mt-3">세계 지도를 내 기억으로 채워보세요.</p>
             </div>
-            <form onSubmit={submit} className="bg-[#faf6f0] rounded-2xl p-5 shadow-2xl space-y-3">
-              <div className="text-sm font-semibold text-[#2b2420]">{signup ? "회원가입" : "로그인"}</div>
+            <form onSubmit={submit} className="bg-white rounded-2xl p-5 border border-[#e7eaf3] shadow-sm space-y-3">
+              <div className="display text-[15px] font-bold text-[#101527]">{signup ? "회원가입" : "로그인"}</div>
               <input className="inp" type="email" placeholder="이메일" value={email} onChange={e=>setEmail(e.target.value)} required />
               <input className="inp" type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required />
               <button className="btn-p w-full" disabled={busy}>{busy ? "처리 중…" : (signup ? "가입하기" : "로그인")}</button>
-              {msg && <div className="text-xs text-[#c2553a]">{msg}</div>}
+              {msg && <div className="text-xs text-[#e11d48]">{msg}</div>}
               <button type="button" onClick={()=>{setSignup(!signup); setMsg("");}}
-                className="w-full text-xs text-[#8a7d70] hover:text-[#2b2420]">
+                className="w-full text-xs text-[#5b6478] hover:text-[#101527]">
                 {signup ? "이미 계정이 있어요 → 로그인" : "처음이신가요? → 회원가입"}
               </button>
             </form>
@@ -227,7 +296,8 @@
           }).select().single();
           if (e1) throw e1;
 
-          if (title.trim()) {
+          // 제목 없이 사진/본문만 있어도 버리지 않고 저장 (제목은 도시명으로 대체)
+          if (title.trim() || body.trim() || file) {
             let photo_url = null;
             if (file) {
               const { data:{ user } } = await sb.auth.getUser();
@@ -237,7 +307,7 @@
               photo_url = sb.storage.from("trip-photos").getPublicUrl(path).data.publicUrl;
             }
             const { error: e3 } = await sb.from("tm_diary_entries")
-              .insert({ place_id: place.id, title, body, photo_url });
+              .insert({ place_id: place.id, title: title.trim() || cityName, body, photo_url });
             if (e3) throw e3;
           }
           onSaved();
@@ -250,27 +320,27 @@
       return (
         <div className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
           <form onClick={e=>e.stopPropagation()} onSubmit={save}
-            className="fade-in bg-[#faf6f0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="px-5 py-4 bg-gradient-to-br from-[#0f766e] to-[#134e4a] text-white">
+            className="fade-in bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-4 bg-gradient-to-br from-[#4F46E5] to-[#6D28D9] text-white">
               <div className="text-3xl">{flag}</div>
-              <div className="font-bold text-lg serif mt-1">{ko}</div>
+              <div className="display font-bold text-lg mt-1">{ko}</div>
               <div className="text-xs opacity-80">{pending.country} · {continent}</div>
             </div>
             <div className="p-5 space-y-3">
               <div className="relative">
-                <label className="text-xs font-semibold text-[#8a7d70]">도시 * <span className="font-normal text-[#b5a99a]">— 자연어로 검색하세요</span></label>
+                <label className="text-xs font-semibold text-[#5b6478]">도시 * <span className="font-normal text-[#9aa2b5]">— 자연어로 검색하세요</span></label>
                 {city ? (
-                  <div className="mt-1 flex items-start gap-2 bg-white border border-[#0f766e] rounded-[10px] px-3 py-2">
-                    <span className="text-[#0f766e] mt-0.5">📍</span>
+                  <div className="mt-1 flex items-start gap-2 bg-white border border-[#4F46E5] rounded-[10px] px-3 py-2">
+                    <span className="text-[#4F46E5] mt-0.5">📍</span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-[#2b2420]">{city.name}</div>
-                      <div className="text-[11px] text-[#8a7d70] truncate">{city.display}</div>
-                      <div className="text-[10px] text-[#0f766e] mt-0.5">
+                      <div className="text-sm font-semibold text-[#101527]">{city.name}</div>
+                      <div className="text-[11px] text-[#5b6478] truncate">{city.display}</div>
+                      <div className="text-[10px] text-[#4F46E5] mt-0.5">
                         {city.lat.toFixed(4)}, {city.lng.toFixed(4)} {city.cached ? "· 도시 DB" : "· OSM"}
                       </div>
                     </div>
                     <button type="button" onClick={()=>{ setCity(null); setQ(""); }}
-                      className="text-xs text-[#8a7d70] hover:text-[#c2553a]">변경</button>
+                      className="text-xs text-[#5b6478] hover:text-[#e11d48]">변경</button>
                   </div>
                 ) : (
                   <input className="inp mt-1" value={q} onChange={e=>setQ(e.target.value)}
@@ -278,36 +348,36 @@
                 )}
 
                 {!city && q.trim() && (
-                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-[#eaddcc] overflow-hidden">
-                    {searching && <div className="px-3 py-2 text-xs text-[#b5a99a]">검색 중…</div>}
+                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-[#e7eaf3] overflow-hidden">
+                    {searching && <div className="px-3 py-2 text-xs text-[#9aa2b5]">검색 중…</div>}
                     {!searching && results.length === 0 &&
-                      <div className="px-3 py-2 text-xs text-[#b5a99a]">결과 없음 — 그대로 두면 클릭한 지점에 표시됩니다</div>}
+                      <div className="px-3 py-2 text-xs text-[#9aa2b5]">결과 없음 — 그대로 두면 클릭한 지점에 표시됩니다</div>}
                     {results.map(r => (
                       <button key={r.osm_id} type="button" onClick={()=>{ setCity(r); setResults([]); }}
                         className="w-full text-left px-3 py-2 hover:bg-[#f7f2ea] border-b border-[#f5efe6] last:border-0">
-                        <div className="text-sm text-[#2b2420] flex items-center gap-1.5">
+                        <div className="text-sm text-[#101527] flex items-center gap-1.5">
                           {r.name}
-                          {r.cached && <span className="text-[9px] bg-[#0f766e]/10 text-[#0f766e] px-1.5 py-0.5 rounded">DB</span>}
+                          {r.cached && <span className="text-[9px] bg-[#4F46E5]/10 text-[#4F46E5] px-1.5 py-0.5 rounded">DB</span>}
                         </div>
-                        <div className="text-[11px] text-[#8a7d70] truncate">{r.display}</div>
+                        <div className="text-[11px] text-[#5b6478] truncate">{r.display}</div>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#8a7d70]">방문일</label>
+                <label className="text-xs font-semibold text-[#5b6478]">방문일</label>
                 <input className="inp mt-1" type="date" value={date} onChange={e=>setDate(e.target.value)} />
               </div>
-              <div className="pt-1 border-t border-[#eaddcc]">
-                <label className="text-xs font-semibold text-[#8a7d70]">여행 다이어리 (선택)</label>
+              <div className="pt-1 border-t border-[#e7eaf3]">
+                <label className="text-xs font-semibold text-[#5b6478]">여행 다이어리 (선택)</label>
                 <input className="inp mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" />
                 <textarea className="inp mt-2" rows="3" value={body} onChange={e=>setBody(e.target.value)} placeholder="그날의 기억을 남겨보세요" />
                 <input className="inp mt-2 text-xs" type="file" accept="image/*" onChange={e=>setFile(e.target.files[0])} />
               </div>
-              {err && <div className="text-xs text-[#c2553a]">{err}</div>}
+              {err && <div className="text-xs text-[#e11d48]">{err}</div>}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={onClose} className="flex-1 text-sm text-[#8a7d70] py-2.5">취소</button>
+                <button type="button" onClick={onClose} className="flex-1 text-sm text-[#5b6478] py-2.5">취소</button>
                 <button className="btn-p flex-1" disabled={busy}>{busy ? "저장 중…" : "지도에 새기기"}</button>
               </div>
             </div>
@@ -316,39 +386,291 @@
       );
     }
 
-    function Stat({ label, value, sub }) {
+    // ─────────────────────────── 다이어리 수정/추가 모달 ───────────────────────────
+    // 방문지 추가 때 다이어리를 건너뛰었어도 나중에 쓰거나 고칠 수 있게
+    function EditModal({ place, onClose, onSaved }) {
+      const entry = place.tm_diary_entries?.[0] || null;
+      const [title, setTitle] = useState(entry?.title || "");
+      const [body, setBody] = useState(entry?.body || "");
+      const [date, setDate] = useState(place.visited_at || "");
+      const [file, setFile] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState("");
+
+      const save = async (e) => {
+        e.preventDefault(); setBusy(true); setErr("");
+        try {
+          // 방문일 변경 → 경로/정렬에 반영
+          const { error: e0 } = await sb.from("tm_places")
+            .update({ visited_at: date || null }).eq("id", place.id);
+          if (e0) throw e0;
+
+          if (entry || title.trim() || body.trim() || file) {
+            let photo_url = entry?.photo_url || null;
+            if (file) {
+              const { data:{ user } } = await sb.auth.getUser();
+              const path = `${user.id}/${place.id}-${file.name.replace(/[^\w.]/g,"_")}`;
+              const { error: e1 } = await sb.storage.from("trip-photos").upload(path, file, { upsert:true });
+              if (e1) throw e1;
+              // 같은 경로에 덮어써도 새 사진이 보이도록 캐시버스터, 이전 파일은 정리
+              photo_url = sb.storage.from("trip-photos").getPublicUrl(path).data.publicUrl + `?v=${Date.now()}`;
+              const old = entry?.photo_url?.split("/trip-photos/")[1]?.split("?")[0];
+              if (old && decodeURIComponent(old) !== path)
+                sb.storage.from("trip-photos").remove([decodeURIComponent(old)]);
+            }
+            const row = { title: title.trim() || place.city, body, photo_url };
+            const { error: e2 } = entry
+              ? await sb.from("tm_diary_entries").update(row).eq("id", entry.id)
+              : await sb.from("tm_diary_entries").insert({ place_id: place.id, ...row });
+            if (e2) throw e2;
+          }
+          onSaved();
+        } catch (ex) { setErr(ex.message || "저장 실패"); setBusy(false); }
+      };
+
       return (
-        <div className="flex-1 text-center px-2">
-          <div className="text-2xl font-bold text-[#2b2420] serif">{value}</div>
-          <div className="text-[11px] text-[#8a7d70] mt-0.5">{label}</div>
-          {sub && <div className="text-[10px] text-[#0f766e] mt-0.5">{sub}</div>}
+        <div className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
+          <form onClick={e=>e.stopPropagation()} onSubmit={save}
+            className="fade-in bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-4 bg-gradient-to-br from-[#4F46E5] to-[#6D28D9] text-white">
+              <div className="text-3xl">{place.flag || "🌍"}</div>
+              <div className="display font-bold text-lg mt-1">{place.city}</div>
+              <div className="text-xs opacity-80">{place.country_ko || place.country} · 다이어리 {entry ? "수정" : "쓰기"}</div>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">방문일</label>
+                <input className="inp mt-1" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">제목</label>
+                <input className="inp mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">내용</label>
+                <textarea className="inp mt-1" rows="4" value={body} onChange={e=>setBody(e.target.value)} placeholder="그날의 기억을 남겨보세요" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">사진 {entry?.photo_url && <span className="font-normal text-[#9aa2b5]">— 새로 고르면 교체됩니다</span>}</label>
+                <input className="inp mt-1 text-xs" type="file" accept="image/*" onChange={e=>setFile(e.target.files[0])} />
+              </div>
+              {err && <div className="text-xs text-[#e11d48]">{err}</div>}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose} className="flex-1 text-sm text-[#5b6478] py-2.5">취소</button>
+                <button className="btn-p flex-1" disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
+              </div>
+            </div>
+          </form>
         </div>
       );
     }
 
-    function DiaryCard({ p, active, onClick, onDelete }) {
-      const entry = p.tm_diary_entries?.[0];
-      const color = REVEAL[p.continent] || "#0f766e";
+    function Stat({ label, value, sub, accent }) {
       return (
-        <div className={`rounded-2xl overflow-hidden bg-white shadow-sm transition-all border-2 ${active ? "border-[#0f766e] shadow-lg" : "border-transparent hover:shadow-md"}`}>
-          <button onClick={onClick} className="w-full text-left">
-            {entry?.photo_url
-              ? <div className="h-28 bg-cover bg-center" style={{backgroundImage:`url(${entry.photo_url})`}} />
-              : <div className="h-24 flex items-center justify-between px-4" style={{background:`linear-gradient(135deg, ${color}, ${color}bb)`}}>
-                  <span className="text-4xl drop-shadow">{p.flag || "🌍"}</span>
-                  {p.visited_at && <span className="text-white/90 text-xs font-medium bg-black/20 px-2 py-1 rounded-full">{p.visited_at}</span>}
-                </div>}
-            <div className="p-3.5">
-              <div className="flex items-center gap-1.5 text-[#8a7d70] text-xs mb-1"><span>📍</span><span>{p.country_ko || p.country} · {p.city}</span></div>
-              {entry ? (
-                <>
-                  <div className="font-semibold text-[#2b2420] text-[15px] leading-snug serif">{entry.title}</div>
-                  <p className="text-[13px] text-[#6b5f54] mt-1.5 line-clamp-2">{entry.body}</p>
-                </>
-              ) : <div className="text-[13px] text-[#b5a99a] italic">아직 다이어리가 없어요</div>}
+        <div className="flex-1 text-center px-1">
+          <div className={`display text-[26px] font-extrabold leading-none ${accent ? "aurora-text" : "text-[#101527]"}`}>{value}</div>
+          <div className="text-[10px] text-[#8b93a7] mt-1.5 tracking-wide">{label}</div>
+          {sub && <div className="mono-tag text-[9px] text-[#b6bdcd] mt-0.5">{sub}</div>}
+        </div>
+      );
+    }
+
+    // 포스트카드형 다이어리 카드 (사진 → 절취선 → 스탬프/본문)
+    function DiaryCard({ p, active, onClick, onDelete, canDelete = true, ownerLabel }) {
+      const entry = p.tm_diary_entries?.[0];
+      const hasPhoto = !!entry?.photo_url;
+      const color = DEEP[p.continent] || "#2563EB";     // 흰 글씨 대비 확보용 진한 톤
+      return (
+        <div className={`postcard ${active ? "on" : ""}`}>
+          <button onClick={onClick} className="w-full text-left block">
+            <div className="relative h-32 bg-cover bg-center"
+              style={ hasPhoto
+                ? { backgroundImage:`url(${entry.photo_url})` }
+                : { background: color } }>
+              {/* 여권 스탬프처럼 살짝 기울인 국기 */}
+              <span className="absolute top-2.5 left-3 text-[30px] drop-shadow-lg" style={{transform:"rotate(-8deg)"}}>{p.flag || "🌍"}</span>
+              {p.visited_at &&
+                <span className="mono-tag absolute top-3 right-3 text-[10px] font-semibold text-white bg-black/35 backdrop-blur px-2 py-1 rounded-md">
+                  {p.visited_at}
+                </span>}
+              {hasPhoto && <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-black/55 to-transparent" />}
+              <div className="absolute bottom-2 left-3 right-3 flex items-center gap-1 text-white">
+                <span className="text-[11px] opacity-90">📍</span>
+                <span className="display text-[13px] font-semibold truncate">{p.city}</span>
+                <span className="text-[11px] text-white/70 truncate">· {p.country_ko || p.country}</span>
+              </div>
+            </div>
+
+            <div className="perf" style={{"--notch":"#3E6FD6"}}></div>
+
+            <div className="px-3.5 pt-3 pb-3">
+              {entry ? (<>
+                <div className="display font-bold text-[#101527] text-[15px] leading-snug">{entry.title}</div>
+                {entry.body && <p className="text-[12.5px] text-[#5b6478] mt-1.5 line-clamp-2 leading-relaxed">{entry.body}</p>}
+              </>) : <div className="text-[12.5px] text-[#9aa2b5]">아직 다이어리가 없어요</div>}
             </div>
           </button>
-          <button onClick={onDelete} className="w-full text-[11px] text-[#b5a99a] hover:text-[#c2553a] py-1.5 border-t border-[#f5efe6]">삭제</button>
+          {canDelete
+            ? <button onClick={onDelete}
+                className="w-full mono-tag text-[10px] text-[#9aa2b5] hover:text-[#e11d48] py-2 border-t border-[#eef1f7] tracking-wider">
+                REMOVE
+              </button>
+            : ownerLabel && (
+                <div className="w-full mono-tag text-[10px] text-[#b6bdcd] py-2 border-t border-[#eef1f7] tracking-wider text-center truncate px-3">
+                  {ownerLabel}
+                </div>
+              )}
+        </div>
+      );
+    }
+
+    // ── 구글 평점 (Edge Function 프록시 · 결과는 tm_ratings에 캐시) ──
+    //    rating은 Places API Enterprise SKU($20/1,000회, 무료 월 1,000회)라
+    //    방문지당 1회만 호출하고 이후에는 캐시를 쓴다.
+    function GoogleRating({ place, canFetch }) {
+      const [data, setData] = useState(undefined);   // undefined=로딩전, null=없음
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState("");
+
+      useEffect(() => {
+        let alive = true;
+        setErr(""); setData(undefined);
+        sb.from("tm_ratings").select("*").eq("place_id", place.id).maybeSingle()
+          .then(({ data }) => { if (alive) setData(data || null); });
+        return () => { alive = false; };
+      }, [place.id]);
+
+      const fetchRating = async () => {
+        setBusy(true); setErr("");
+        try {
+          const q = `${place.city} ${place.country_ko || place.country}`;
+          const { data: res, error } = await sb.functions.invoke("places-rating", {
+            body: { query: q, lat: place.lat, lng: place.lng },
+          });
+          if (error) {
+            // Edge Function이 비정상 코드를 주면 본문을 읽어 사유를 구분
+            let reason = "";
+            try { reason = (await error.context?.json())?.error || ""; } catch {}
+            throw new Error(reason === "NO_KEY"
+              ? "아직 구글 API 키가 연결되지 않았어요. (키만 넣으면 바로 동작합니다)"
+              : reason === "NOT_FOUND" ? "구글에서 이 장소를 찾지 못했어요."
+              : "평점을 불러오지 못했어요.");
+          }
+          const row = {
+            place_id: place.id, google_place_id: res.googlePlaceId, name: res.name,
+            rating: res.rating, user_rating_count: res.userRatingCount,
+          };
+          await sb.from("tm_ratings").upsert(row, { onConflict: "place_id" });
+          setData(row);
+        } catch (ex) { setErr(ex.message); }
+        setBusy(false);
+      };
+
+      if (data) {
+        return (
+          <div className="mt-3 flex items-center gap-2 bg-[#f6f8fd] border border-[#e7eaf3] rounded-xl px-3 py-2">
+            <span className="text-[15px]">⭐</span>
+            <span className="display font-bold text-[15px] text-[#101527]">{Number(data.rating).toFixed(1)}</span>
+            <span className="mono-tag text-[10px] text-[#8b93a7]">
+              {data.user_rating_count?.toLocaleString()} reviews
+            </span>
+            <span className="ml-auto mono-tag text-[9px] text-[#b6bdcd] uppercase">Google</span>
+          </div>
+        );
+      }
+      if (!canFetch) return null;
+      return (
+        <div className="mt-3">
+          <button onClick={fetchRating} disabled={busy}
+            className="w-full rounded-xl py-2 text-[12.5px] font-semibold bg-white text-[#5b6478] border border-[#e0e5f0] hover:bg-[#f4f6fb] transition disabled:opacity-50">
+            {busy ? "불러오는 중…" : "⭐ 구글 평점 불러오기"}
+          </button>
+          {err && <div className="text-[11.5px] text-[#e11d48] mt-1.5 leading-relaxed">{err}</div>}
+        </div>
+      );
+    }
+
+    // ─────────────────────────── 공유 패널 ───────────────────────────
+    function SharePanel({ shares, onChanged, onClose }) {
+      const [email, setEmail] = useState("");
+      const [msg, setMsg] = useState("");
+      const [busy, setBusy] = useState(false);
+
+      const invite = async (e) => {
+        e.preventDefault(); setBusy(true); setMsg("");
+        try {
+          const { data: uid, error } = await sb.rpc("tm_find_user", { p_email: email });
+          if (error) throw error;
+          if (!uid) { setMsg("그 이메일로 가입한 사용자가 없어요."); setBusy(false); return; }
+          const { error: e2 } = await sb.from("tm_shares").insert({ member_id: uid });
+          if (e2) throw new Error(e2.message.includes("duplicate") ? "이미 초대한 사람이에요."
+                                : e2.message.includes("tm_shares_no_self") ? "본인은 초대할 수 없어요." : e2.message);
+          setEmail(""); setMsg("초대했어요!"); onChanged();
+        } catch (ex) { setMsg(ex.message || "실패"); }
+        setBusy(false);
+      };
+
+      const revoke = async (id) => { await sb.from("tm_shares").delete().eq("id", id); onChanged(); };
+
+      return (
+        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center px-4" onClick={onClose}>
+          <div onClick={e=>e.stopPropagation()}
+            className="fade-in bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
+            <div className="px-5 py-4 border-b border-[#e7eaf3] flex items-center">
+              <div>
+                <div className="display font-bold text-[17px] text-[#101527]">지도 공유</div>
+                <div className="text-[11px] text-[#8b93a7] mt-0.5">가족·친구를 초대해 서로의 지도를 볼 수 있어요</div>
+              </div>
+              <button onClick={onClose} className="ml-auto text-[#9aa2b5] hover:text-[#101527]">✕</button>
+            </div>
+
+            <form onSubmit={invite} className="p-5 border-b border-[#e7eaf3]">
+              <label className="text-xs font-semibold text-[#5b6478]">이메일로 초대</label>
+              <div className="flex gap-2 mt-1.5">
+                <input className="inp flex-1" type="email" value={email} onChange={e=>setEmail(e.target.value)}
+                  placeholder="friend@example.com" required />
+                <button className="btn-p whitespace-nowrap" disabled={busy}>{busy ? "…" : "초대"}</button>
+              </div>
+              {msg && <div className="text-[11.5px] mt-2 text-[#4F46E5]">{msg}</div>}
+            </form>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <div className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest mb-2">
+                  내 지도를 보는 사람 ({shares.members.length})
+                </div>
+                {shares.members.length === 0
+                  ? <div className="text-[12.5px] text-[#9aa2b5]">아직 초대한 사람이 없어요.</div>
+                  : shares.members.map(m => (
+                      <div key={m.share_id} className="flex items-center gap-2 py-1.5">
+                        <span className="w-7 h-7 rounded-full bg-[#eef0f7] flex items-center justify-center text-[11px] font-semibold text-[#5b6478]">
+                          {m.other_email[0].toUpperCase()}
+                        </span>
+                        <span className="text-[13px] text-[#101527] truncate flex-1">{m.other_email}</span>
+                        <button onClick={()=>revoke(m.share_id)}
+                          className="mono-tag text-[10px] text-[#9aa2b5] hover:text-[#e11d48]">REVOKE</button>
+                      </div>
+                    ))}
+              </div>
+
+              <div>
+                <div className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest mb-2">
+                  나를 초대한 사람 ({shares.owners.length})
+                </div>
+                {shares.owners.length === 0
+                  ? <div className="text-[12.5px] text-[#9aa2b5]">아직 초대받은 지도가 없어요.</div>
+                  : shares.owners.map(o => (
+                      <div key={o.share_id} className="flex items-center gap-2 py-1.5">
+                        <span className="w-7 h-7 rounded-full bg-[#eef0f7] flex items-center justify-center text-[11px] font-semibold text-[#5b6478]">
+                          {o.other_email[0].toUpperCase()}
+                        </span>
+                        <span className="text-[13px] text-[#101527] truncate flex-1">{o.other_email}</span>
+                        <span className="mono-tag text-[10px] text-[#b6bdcd]">VIEW</span>
+                      </div>
+                    ))}
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
@@ -357,23 +679,58 @@
     function MapApp({ session }) {
       const mapRef = useRef(null), tileRef = useRef(null), geoRef = useRef(null), markersRef = useRef({});
       const modeRef = useRef("scratch"), addRef = useRef(false), visitedRef = useRef(new Map());
+      const routeRef = useRef(null);
+      const myId = session.user.id;
 
-      const [places, setPlaces] = useState([]);
+      const [allPlaces, setAllPlaces] = useState([]);   // 내 것 + 공유받은 것 (RLS가 걸러줌)
+      const [shares, setShares] = useState({ members:[], owners:[] });
+      const [scope, setScope] = useState("mine");        // mine | all | <ownerId>
       const [selected, setSelected] = useState(null);
       const [mode, setMode] = useState("scratch");
       const [addMode, setAddMode] = useState(false);
+      const [showRoute, setShowRoute] = useState(false);
+      const [sharePanel, setSharePanel] = useState(false);
       const [pending, setPending] = useState(null);
+      const [editing, setEditing] = useState(null);      // 다이어리 수정 대상 place
       const [loading, setLoading] = useState(true);
+      const [loadErr, setLoadErr] = useState(false);
+      const [geoErr, setGeoErr] = useState(false);
 
       // ── 데이터 로드 ──
       const load = useCallback(async () => {
         const { data, error } = await sb.from("tm_places")
           .select("*, tm_diary_entries(*)")
-          .order("visited_at", { ascending:false, nullsFirst:false });
-        if (!error) setPlaces(data || []);
+          .order("visited_at", { ascending:false, nullsFirst:false })
+          .order("created_at", { referencedTable:"tm_diary_entries", ascending:false }); // 다이어리 여러 건이면 최신을 대표로
+        if (error) setLoadErr(true);
+        else { setAllPlaces(data || []); setLoadErr(false); }
+        const { data: sh } = await sb.rpc("tm_share_list");
+        setShares({
+          members: (sh || []).filter(r => r.kind === "member"),
+          owners:  (sh || []).filter(r => r.kind === "owner"),
+        });
         setLoading(false);
       }, []);
       useEffect(() => { load(); }, [load]);
+
+      // 현재 보고 있는 지도 범위
+      const places = useMemo(() => {
+        if (scope === "mine") return allPlaces.filter(p => p.user_id === myId);
+        if (scope === "all")  return allPlaces;
+        return allPlaces.filter(p => p.user_id === scope);
+      }, [allPlaces, scope, myId]);
+
+      const readOnly = scope !== "mine";   // 남의 지도/함께보기에선 추가 불가
+
+      // 공유가 회수되면 사라진 지도에 갇히지 않도록 scope 복구
+      useEffect(() => {
+        if (scope === "mine") return;
+        if (shares.owners.length === 0 || (scope !== "all" && !shares.owners.some(o => o.other_id === scope))) {
+          setScope("mine"); setSelected(null);
+        }
+      }, [shares.owners, scope]);
+      const ownerEmail = (uid) => uid === myId ? null
+        : (shares.owners.find(o => o.other_id === uid)?.other_email || "공유된 기록");
 
       // 방문국 Map: country(영문 GeoJSON명) → 대륙 (색칠 매칭용)
       useEffect(() => {
@@ -394,27 +751,22 @@
         const on = visitedRef.current.has(feature.properties.name);
         if (m === "scratch") {
           return on
-            ? { fillColor: REVEAL[visitedRef.current.get(feature.properties.name)] || "#0f766e", fillOpacity:.92, color:"#fff", weight:1.2, opacity:.95, dashArray:null }
-            : { fillColor:"#c9cdd4", fillOpacity:1, color:"#0f1b2b", weight:.6, opacity:.5, dashArray:null };
+            ? { fillColor: REVEAL[visitedRef.current.get(feature.properties.name)] || "#60A5FA", fillOpacity:.92, color:"#fff", weight:1.2, opacity:.95, dashArray:null }
+            : { fillColor:"#D6DBEA", fillOpacity:.94, color:"#140F2E", weight:.6, opacity:.45, dashArray:null };
         }
         return on
-          ? { fillColor:"#0f766e", fillOpacity:.5, color:"#0d5c56", weight:1.5, opacity:.9, dashArray:"3" }
+          ? { fillColor:"#4F46E5", fillOpacity:.45, color:"#4338CA", weight:1.5, opacity:.9, dashArray:"3" }
           : { fillColor:"#000", fillOpacity:0, color:"#000", weight:0, opacity:0, dashArray:null };
       };
       const hoverStyle = m => m === "scratch"
-        ? { fillColor:"#f2c14e", fillOpacity:.9,  color:"#ffffff", weight:2.5, opacity:1, dashArray:null }
-        : { fillColor:"#e07a5f", fillOpacity:.55, color:"#c2553a", weight:2.5, opacity:1, dashArray:null };
+        ? { fillColor:"#5EEAD4", fillOpacity:.95, color:"#ffffff", weight:2.5, opacity:1, dashArray:null }
+        : { fillColor:"#4F46E5", fillOpacity:.5,  color:"#312E81", weight:2.5, opacity:1, dashArray:null };
 
-      // ── 지도 1회 초기화 ──
-      useEffect(() => {
-        const map = L.map("map", { worldCopyJump:true, minZoom:2, maxBounds:[[-85,-200],[85,200]] }).setView([25,20], 2.4);
-        mapRef.current = map;
-        tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-          { attribution:'© OpenStreetMap', maxZoom:18 }).addTo(map);
-        setTimeout(()=>map.invalidateSize(), 200);
-        window.addEventListener("resize", ()=>map.invalidateSize());
-
-        fetch(GEO_URL).then(r=>r.json()).then(geo => {
+      // ── 국경 GeoJSON 로드 (실패 시 재시도 가능) ──
+      const loadGeo = useCallback(() => {
+        setGeoErr(false);
+        fetch(GEO_URL).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(geo => {
+          const map = mapRef.current; if (!map || geoRef.current) return;   // 언마운트/중복 가드
           geoRef.current = L.geoJSON(geo, {
             style: f => styleFor(f, modeRef.current),
             onEachFeature: (f, layer) => {
@@ -440,7 +792,25 @@
             },
           }).addTo(map);
           applyMode();                                       // 첫 스타일/라벨 적용
-        });
+        }).catch(() => setGeoErr(true));                     // 네트워크 실패 → 재시도 UI
+      }, []);
+
+      // ── 지도 1회 초기화 (언마운트 시 리스너·인스턴스 정리) ──
+      useEffect(() => {
+        const map = L.map("map", { worldCopyJump:true, minZoom:2, maxBounds:[[-85,-200],[85,200]] }).setView([25,20], 2.4);
+        mapRef.current = map;
+        tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          { attribution:'© OpenStreetMap', maxZoom:18 }).addTo(map);
+        const onResize = () => map.invalidateSize();
+        setTimeout(onResize, 200);
+        window.addEventListener("resize", onResize);
+        loadGeo();
+        return () => {                                       // 로그아웃 후 재로그인 시 누수 방지
+          window.removeEventListener("resize", onResize);
+          map.remove();
+          mapRef.current = geoRef.current = tileRef.current = routeRef.current = null;
+          markersRef.current = {};
+        };
       }, []);
 
       // ── 모드/데이터 변경 시 스타일·라벨 재적용 ──
@@ -464,33 +834,67 @@
       useEffect(() => { addRef.current = addMode;
         document.getElementById("map")?.classList.toggle("adding", addMode); }, [addMode]);
 
+      // 남의 지도를 볼 땐 추가 모드 해제
+      useEffect(() => { if (readOnly) setAddMode(false); }, [readOnly]);
+
+      // ── 체크인 경로 (방문일 순서로 잇는 선) ──
+      useEffect(() => {
+        const map = mapRef.current; if (!map) return;
+        if (routeRef.current) { map.removeLayer(routeRef.current); routeRef.current = null; }
+        if (!showRoute) return;
+        const pts = places
+          .filter(p => p.visited_at)
+          .sort((a,b) => a.visited_at.localeCompare(b.visited_at))
+          .map(p => [p.lat, p.lng]);
+        if (pts.length < 2) return;
+        routeRef.current = L.polyline(pts, {
+          color:"#4F46E5", weight:2.5, opacity:.95, dashArray:"7 7", lineCap:"round",
+        }).addTo(map);
+        routeRef.current.bringToFront();
+      }, [showRoute, places]);
+
       // ── 방문지 핀 동기화 ──
       useEffect(() => {
         const map = mapRef.current; if (!map) return;
         Object.values(markersRef.current).forEach(mk => map.removeLayer(mk));
         markersRef.current = {};
         places.forEach(p => {
-          const icon = L.divIcon({ className:"", html:`<div class="pin"><span>${p.flag||"🌍"}</span></div>`, iconSize:[34,34], iconAnchor:[17,34] });
+          const c1 = REVEAL[p.continent] || "#818CF8", c2 = DEEP[p.continent] || "#4F46E5";
+          const icon = L.divIcon({ className:"",
+            html:`<div class="pin" style="--c:${c1};--c2:${c2}"><span>${esc(p.flag||"🌍")}</span></div>`,
+            iconSize:[34,34], iconAnchor:[17,34] });
           const mk = L.marker([p.lat, p.lng], { icon }).addTo(map);
-          mk.bindPopup(`<b>${p.country_ko||p.country} · ${p.city}</b>`);
+          mk.bindPopup(`<b>${esc(p.country_ko||p.country)} · ${esc(p.city)}</b>`);
           mk.on("click", () => setSelected(p.id));
           markersRef.current[p.id] = mk;
         });
       }, [places]);
 
       // ── 선택 → 이동 + 핀 강조 ──
+      const flownRef = useRef(null);                     // 같은 선택으로 재비행 방지 (load 후 places 갱신 시)
       useEffect(() => {
         Object.entries(markersRef.current).forEach(([id, mk]) => {
           const el = mk.getElement()?.querySelector(".pin");
           if (el) el.classList.toggle("active", id === selected);
         });
+        if (!selected) { flownRef.current = null; return; }
         const p = places.find(x => x.id === selected);
-        if (p && mapRef.current) { mapRef.current.flyTo([p.lat, p.lng], 5, { duration:1 }); markersRef.current[p.id]?.openPopup(); }
+        if (p && mapRef.current && flownRef.current !== selected) {
+          flownRef.current = selected;
+          mapRef.current.flyTo([p.lat, p.lng], 5, { duration:1 }); markersRef.current[p.id]?.openPopup();
+        }
       }, [selected, places]);
 
       const remove = async (id) => {
         if (!confirm("이 방문지와 다이어리를 삭제할까요?")) return;
-        await sb.from("tm_places").delete().eq("id", id);
+        // 사진은 DB CASCADE로 안 지워지므로 Storage에서 직접 정리 (고아 파일 방지)
+        const p = places.find(x => x.id === id);
+        const paths = (p?.tm_diary_entries || [])
+          .map(en => en.photo_url?.split("/trip-photos/")[1]?.split("?")[0])
+          .filter(Boolean).map(decodeURIComponent);
+        const { error } = await sb.from("tm_places").delete().eq("id", id);
+        if (error) { alert("삭제하지 못했어요: " + error.message); return; }
+        if (paths.length) sb.storage.from("trip-photos").remove(paths);
         if (selected === id) setSelected(null);
         load();
       };
@@ -500,40 +904,97 @@
 
       return (
         <div className="h-screen w-screen flex flex-col md:flex-row overflow-hidden">
-          <aside className="w-full md:w-[380px] flex-shrink-0 h-[45vh] md:h-full flex flex-col bg-[#faf6f0] border-r border-[#eaddcc]">
+          <aside className="panel w-full md:w-[390px] flex-shrink-0 h-[45vh] md:h-full flex flex-col border-r border-[#e7eaf3]">
+            {/* 헤더 — 로고 배지에만 그라데이션 */}
             <div className="px-5 pt-5 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🗺️</span>
-                <h1 className="text-xl font-bold text-[#2b2420] serif">Trailmark</h1>
-                <button onClick={()=>sb.auth.signOut()} className="ml-auto text-[11px] text-[#8a7d70] hover:text-[#c2553a]">로그아웃</button>
+              <div className="flex items-center gap-2.5">
+                <span className="aurora w-9 h-9 rounded-xl flex items-center justify-center text-[18px] shadow-sm">🧭</span>
+                <div className="leading-tight">
+                  <h1 className="display text-[20px] font-extrabold text-[#101527]">Trailmark</h1>
+                  <div className="mono-tag text-[9px] text-[#9aa2b5] uppercase">Travel Passport</div>
+                </div>
+                <button onClick={()=>sb.auth.signOut()}
+                  className="ml-auto mono-tag text-[10px] text-[#9aa2b5] hover:text-[#101527] border border-[#e0e5f0] rounded-full px-2.5 py-1">
+                  LOG OUT
+                </button>
               </div>
-              <p className="text-xs text-[#8a7d70] mt-1 truncate">{session.user.email}</p>
+              <p className="text-[11px] text-[#9aa2b5] mt-2 truncate">{session.user.email}</p>
             </div>
 
-            <div className="mx-4 mb-3 rounded-2xl bg-white shadow-sm py-3 flex divide-x divide-[#f0e7da]">
+            {/* 통계 — 스탬프 타일 */}
+            <div className="mx-4 mb-3 stamp py-3.5 flex">
               <Stat label="방문 국가" value={stats.countries} />
+              <div className="w-px bg-[#e7eaf3] my-1" />
               <Stat label="도시 기록" value={stats.cities} />
-              <Stat label="대륙 진행률" value={`${stats.progress}%`} sub={`${stats.continents}/${TOTAL_CONTINENTS}`} />
+              <div className="w-px bg-[#e7eaf3] my-1" />
+              <Stat label="대륙 진행률" value={`${stats.progress}%`} sub={`${stats.continents} / ${TOTAL_CONTINENTS}`} accent />
             </div>
 
-            <div className="px-4 pb-2">
-              <button onClick={()=>setAddMode(!addMode)}
-                className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${addMode ? "bg-[#e07a5f] text-white" : "bg-[#0f766e] text-white hover:opacity-90"}`}>
-                {addMode ? "✕ 추가 취소 — 지도에서 나라를 클릭하세요" : "➕ 방문지 추가"}
+            {/* 대륙 진행 바 — 채움에만 그라데이션 */}
+            <div className="mx-4 mb-3">
+              <div className="h-1.5 rounded-full bg-[#e7eaf3] overflow-hidden">
+                <div className="h-full rounded-full aurora-bar transition-all duration-500" style={{width:`${stats.progress}%`}} />
+              </div>
+            </div>
+
+            {/* 보고 있는 지도 선택 */}
+            {shares.owners.length > 0 && (
+              <div className="px-4 pb-3">
+                <select value={scope} onChange={e=>{ setScope(e.target.value); setSelected(null); }}
+                  className="inp text-[13px] py-2">
+                  <option value="mine">🧭 내 지도</option>
+                  <option value="all">👨‍👩‍👧 함께 보기 (전체)</option>
+                  {shares.owners.map(o => <option key={o.other_id} value={o.other_id}>👤 {o.other_email}의 지도</option>)}
+                </select>
+              </div>
+            )}
+
+            <div className="px-4 pb-3 space-y-2">
+              <button onClick={()=>setAddMode(!addMode)} disabled={readOnly}
+                className={readOnly
+                  ? "w-full rounded-xl py-3 text-sm font-semibold bg-[#eef0f7] text-[#b6bdcd] cursor-not-allowed"
+                  : addMode
+                    ? "w-full rounded-xl py-3 text-sm font-semibold bg-[#eef0f7] text-[#5b6478] hover:bg-[#e5e8f2] transition"
+                    : "btn-p w-full"}>
+                {readOnly ? "👀 보기 전용 지도예요" : addMode ? "✕ 취소 — 지도에서 나라를 클릭하세요" : "＋ 방문지 추가"}
               </button>
+
+              <div className="flex gap-2">
+                <button onClick={()=>setShowRoute(!showRoute)}
+                  className={`flex-1 rounded-xl py-2 text-[12.5px] font-semibold transition border ${
+                    showRoute ? "bg-[#4F46E5] text-white border-[#4F46E5]" : "bg-white text-[#5b6478] border-[#e0e5f0] hover:bg-[#f4f6fb]"}`}>
+                  ✈️ 여행 경로
+                </button>
+                <button onClick={()=>setSharePanel(true)}
+                  className="flex-1 rounded-xl py-2 text-[12.5px] font-semibold bg-white text-[#5b6478] border border-[#e0e5f0] hover:bg-[#f4f6fb] transition">
+                  👥 공유 {shares.members.length > 0 && <span className="text-[#4F46E5]">{shares.members.length}</span>}
+                </button>
+              </div>
             </div>
 
-            <div className="px-4 pb-1 text-[11px] font-semibold text-[#a1937f] tracking-wide uppercase">여행 다이어리</div>
-            <div className="flex-1 overflow-y-auto card-scroll px-4 pb-4 space-y-3">
-              {loading && <div className="text-sm text-[#b5a99a] text-center py-8">불러오는 중…</div>}
-              {!loading && places.length === 0 &&
-                <div className="text-center py-10 px-4">
-                  <div className="text-4xl mb-2">✦</div>
-                  <div className="text-sm text-[#8a7d70]">아직 긁은 나라가 없어요.<br/>“방문지 추가”로 첫 나라를 새겨보세요.</div>
+            <div className="px-5 pb-2 flex items-center gap-2">
+              <span className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest">Travel Log</span>
+              <span className="mono-tag text-[10px] text-[#b6bdcd]">{places.length}</span>
+              <div className="flex-1 h-px bg-[#e7eaf3]" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto card-scroll px-4 pb-5 space-y-3.5">
+              {loading && <div className="text-sm text-[#9aa2b5] text-center py-8">불러오는 중…</div>}
+              {!loading && loadErr &&
+                <div className="text-center py-3 text-[12px] text-[#e11d48]">
+                  기록을 불러오지 못했어요. <button onClick={load} className="underline font-semibold">다시 시도</button>
+                </div>}
+              {!loading && !loadErr && places.length === 0 &&
+                <div className="text-center py-12 px-4">
+                  <div className="text-4xl mb-3">✦</div>
+                  <div className="display text-[15px] font-semibold text-[#101527]">아직 긁은 나라가 없어요</div>
+                  <div className="text-[12.5px] text-[#8b93a7] mt-1.5 leading-relaxed">‘방문지 추가’를 누르고<br/>다녀온 나라를 지도에서 긁어보세요.</div>
                 </div>}
               {places.map(p => (
                 <DiaryCard key={p.id} p={p} active={p.id===selected}
-                  onClick={()=>setSelected(p.id===selected ? null : p.id)} onDelete={()=>remove(p.id)} />
+                  onClick={()=>setSelected(p.id===selected ? null : p.id)} onDelete={()=>remove(p.id)}
+                  canDelete={p.user_id === myId}
+                  ownerLabel={ownerEmail(p.user_id)} />
               ))}
             </div>
           </aside>
@@ -546,35 +1007,76 @@
               <button className={mode==="real" ? "on" : ""} onClick={()=>setMode("real")}>🛰️ 실사</button>
             </div>
 
-            {addMode && (
-              <div className="fade-in absolute top-16 left-1/2 -translate-x-1/2 z-[500] bg-[#e07a5f] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg">
-                🖱️ 다녀온 나라를 지도에서 클릭하세요
+            {geoErr && (
+              <div className="absolute inset-0 z-[600] flex items-center justify-center">
+                <div className="glass-strong rounded-2xl px-5 py-4 text-center shadow-xl">
+                  <div className="text-sm font-semibold text-[#101527]">국경 데이터를 불러오지 못했어요</div>
+                  <div className="text-[11.5px] text-[#5b6478] mt-1">네트워크를 확인하고 다시 시도해주세요.</div>
+                  <button onClick={loadGeo} className="btn-p mt-3 px-5 py-2 text-[12.5px]">다시 시도</button>
+                </div>
               </div>
             )}
 
-            <div className="absolute top-3 right-3 z-[500] bg-white/90 backdrop-blur px-3 py-2 rounded-xl shadow text-[11px] text-[#6b5f54] space-y-1">
+            {addMode && (
+              <div className="fade-in absolute top-16 left-1/2 -translate-x-1/2 z-[500] text-white text-[13px] font-semibold px-4 py-2 rounded-full shadow-xl"
+                style={{background:"linear-gradient(135deg,#4F46E5,#6D28D9)"}}>
+                다녀온 나라를 지도에서 클릭하세요
+              </div>
+            )}
+
+            {/* 범례 */}
+            <div className="absolute top-3 right-3 z-[500] glass-strong px-3 py-2.5 rounded-2xl shadow-lg text-[11px] text-[#3b4256] space-y-1.5">
               {mode==="scratch" ? (<>
-                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:"#14b8a6"}}></span>긁어낸 나라 (방문)</div>
-                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:"#c9cdd4"}}></span>은박 (미방문)</div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#5EEAD4"}}></span>
+                  긁어낸 나라
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#D6DBEA"}}></span>
+                  아직 은박
+                </div>
               </>) : (
-                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#0f766e]/40"></span>방문한 나라</div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px] bg-[#4F46E5]/45"></span>방문한 나라
+                </div>
               )}
             </div>
 
+            {/* 선택 상세 — 티켓 스타일 */}
             {selPlace && (
-              <div className="fade-in absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[360px] z-[500] bg-white rounded-2xl shadow-2xl overflow-hidden">
-                {selEntry?.photo_url
-                  ? <div className="h-36 bg-cover bg-center" style={{backgroundImage:`url(${selEntry.photo_url})`}} />
-                  : <div className="h-28 flex items-end p-4" style={{background:`linear-gradient(135deg, ${REVEAL[selPlace.continent]||"#0f766e"}, #0f766e)`}}>
-                      <span className="text-5xl drop-shadow-lg">{selPlace.flag||"🌍"}</span>
-                    </div>}
-                <div className="p-4">
-                  <div className="text-xs text-[#8a7d70]">{selPlace.country_ko||selPlace.country} · {selPlace.city}{selPlace.visited_at ? ` · ${selPlace.visited_at}` : ""}</div>
+              <div className="fade-in absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[370px] z-[500] rounded-2xl shadow-2xl overflow-hidden bg-white">
+                <div className="relative h-40 bg-cover bg-center"
+                  style={ selEntry?.photo_url
+                    ? { backgroundImage:`url(${selEntry.photo_url})` }
+                    : { background: DEEP[selPlace.continent] || "#2563EB" } }>
+                  <span className="absolute top-3 left-4 text-[38px] drop-shadow-lg" style={{transform:"rotate(-8deg)"}}>{selPlace.flag||"🌍"}</span>
+                  <button onClick={()=>setSelected(null)}
+                    className="absolute top-3 right-3 w-7 h-7 rounded-full bg-black/35 backdrop-blur text-white text-sm hover:bg-black/50">✕</button>
+                  {selEntry?.photo_url && <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />}
+                  <div className="absolute bottom-3 left-4 right-4 text-white">
+                    <div className="display text-[19px] font-bold leading-tight">{selPlace.city}</div>
+                    <div className="mono-tag text-[10px] text-white/80 mt-0.5 uppercase">
+                      {selPlace.country_ko||selPlace.country}{selPlace.visited_at ? ` · ${selPlace.visited_at}` : ""}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="perf" style={{"--notch":"#140F2E"}}></div>
+
+                <div className="px-4 pt-3.5 pb-4">
                   {selEntry ? (<>
-                    <h3 className="font-bold text-[#2b2420] serif text-lg leading-snug mt-1">{selEntry.title}</h3>
-                    <p className="text-sm text-[#6b5f54] mt-2 leading-relaxed whitespace-pre-wrap">{selEntry.body}</p>
-                  </>) : <div className="text-sm text-[#b5a99a] italic mt-2">다이어리가 아직 없어요.</div>}
-                  <button onClick={()=>setSelected(null)} className="mt-3 text-xs text-[#8a7d70] hover:text-[#2b2420]">✕ 닫기</button>
+                    <h3 className="display font-bold text-[#101527] text-[17px] leading-snug">{selEntry.title}</h3>
+                    {selEntry.body && <p className="text-[13.5px] text-[#5b6478] mt-2 leading-relaxed whitespace-pre-wrap">{selEntry.body}</p>}
+                  </>) : <div className="text-[13.5px] text-[#9aa2b5]">다이어리가 아직 없어요.</div>}
+
+                  <GoogleRating place={selPlace} canFetch={selPlace.user_id === myId} />
+
+                  {selPlace.user_id === myId && (
+                    <button onClick={()=>setEditing(selPlace)}
+                      className="mt-3 w-full rounded-xl py-2 text-[12.5px] font-semibold bg-white text-[#5b6478] border border-[#e0e5f0] hover:bg-[#f4f6fb] transition">
+                      ✏️ 다이어리 {selEntry ? "수정" : "쓰기"} · 방문일 변경
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -582,6 +1084,11 @@
 
           {pending && <AddModal pending={pending} onClose={()=>setPending(null)}
             onSaved={()=>{ setPending(null); load(); }} />}
+
+          {editing && <EditModal place={editing} onClose={()=>setEditing(null)}
+            onSaved={()=>{ setEditing(null); load(); }} />}
+
+          {sharePanel && <SharePanel shares={shares} onChanged={load} onClose={()=>setSharePanel(false)} />}
         </div>
       );
     }
@@ -593,7 +1100,7 @@
         const { data:{ subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
         return () => subscription.unsubscribe();
       }, []);
-      if (session === undefined) return <div className="h-screen flex items-center justify-center text-[#8a7d70]">불러오는 중…</div>;
+      if (session === undefined) return <div className="h-screen flex items-center justify-center text-[#5b6478]">불러오는 중…</div>;
       return session ? <MapApp session={session} /> : <AuthScreen />;
     }
 
