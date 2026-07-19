@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trailmark — 여행 기록 지도</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root { --ink:#2b2420; --cream:#faf6f0; --teal:#0f766e; --coral:#e07a5f; }
+    body { font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif; }
+    .serif { font-family:'Georgia','Times New Roman',serif; }
+    #map { height:100%; width:100%; transition:background .4s ease; }
+    #map.real    { background:#a9d3e0; }
+    #map.scratch { background:#0f1b2b; }
+
+    .pin { display:flex; align-items:center; justify-content:center; width:34px; height:34px;
+      background:var(--coral); border:3px solid #fff; border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg); box-shadow:0 3px 8px rgba(0,0,0,.35); font-size:15px; }
+    .pin span { transform:rotate(45deg); }
+    .pin.active { background:var(--teal); transform:rotate(-45deg) scale(1.25); z-index:1000; }
+
+    .ctry-label { background:transparent; border:none; box-shadow:none; padding:0;
+      font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+    .ctry-label::before { display:none; }
+    .leaflet-tooltip.ctry-label { white-space:nowrap; }
+
+    #map.scratch .ctry-hover { filter:drop-shadow(0 0 7px rgba(242,193,78,.85)); }
+    #map.real    .ctry-hover { filter:drop-shadow(0 0 5px rgba(224,122,95,.6)); }
+    #map.adding  { cursor:crosshair; }
+
+    .leaflet-popup-content { margin:10px 14px; font-family:inherit; }
+    .card-scroll::-webkit-scrollbar { width:8px; }
+    .card-scroll::-webkit-scrollbar-thumb { background:#d8cabb; border-radius:8px; }
+    .fade-in { animation:fade .35s ease both; }
+    @keyframes fade { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+
+    .seg { background:rgba(255,255,255,.9); backdrop-filter:blur(6px); border-radius:999px; padding:3px;
+      box-shadow:0 4px 14px rgba(0,0,0,.18); display:inline-flex; gap:2px; }
+    .seg button { border:none; background:transparent; font-size:12px; font-weight:600; color:#8a7d70;
+      padding:6px 13px; border-radius:999px; cursor:pointer; transition:all .2s; }
+    .seg button.on { background:var(--teal); color:#fff; }
+
+    .inp { width:100%; border:1px solid #e3d8c8; border-radius:10px; padding:9px 11px; font-size:14px; background:#fff; }
+    .inp:focus { outline:2px solid #0f766e33; border-color:var(--teal); }
+    .btn-p { background:var(--teal); color:#fff; font-weight:600; border-radius:10px; padding:10px 16px; font-size:14px; }
+    .btn-p:disabled { opacity:.5; }
+  </style>
+</head>
+<body class="bg-[#faf6f0]">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+    // ── Supabase (프론트온리 · publishable 키 · 보안은 RLS가 담당) ──
+    const SUPABASE_URL = "https://ibxhnwovdtnfttfzqpos.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_7RB2j_pC9YcoPG5N1n8uZg_p12ndXjr";
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const GEO_URL = "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json";
+
+    // ISO3 → [한글명, 국기, 대륙]  (없으면 영문명 + 🌍 + 기타)
+    const META = {
+      KOR:["대한민국","🇰🇷","아시아"], JPN:["일본","🇯🇵","아시아"], CHN:["중국","🇨🇳","아시아"], TWN:["대만","🇹🇼","아시아"],
+      THA:["태국","🇹🇭","아시아"], VNM:["베트남","🇻🇳","아시아"], SGP:["싱가포르","🇸🇬","아시아"], MYS:["말레이시아","🇲🇾","아시아"],
+      IDN:["인도네시아","🇮🇩","아시아"], PHL:["필리핀","🇵🇭","아시아"], IND:["인도","🇮🇳","아시아"], NPL:["네팔","🇳🇵","아시아"],
+      ARE:["아랍에미리트","🇦🇪","아시아"], MNG:["몽골","🇲🇳","아시아"], LKA:["스리랑카","🇱🇰","아시아"], TUR:["튀르키예","🇹🇷","유럽"],
+      FRA:["프랑스","🇫🇷","유럽"], GBR:["영국","🇬🇧","유럽"], DEU:["독일","🇩🇪","유럽"], ITA:["이탈리아","🇮🇹","유럽"],
+      ESP:["스페인","🇪🇸","유럽"], PRT:["포르투갈","🇵🇹","유럽"], NLD:["네덜란드","🇳🇱","유럽"], BEL:["벨기에","🇧🇪","유럽"],
+      CHE:["스위스","🇨🇭","유럽"], AUT:["오스트리아","🇦🇹","유럽"], CZE:["체코","🇨🇿","유럽"], HUN:["헝가리","🇭🇺","유럽"],
+      POL:["폴란드","🇵🇱","유럽"], GRC:["그리스","🇬🇷","유럽"], HRV:["크로아티아","🇭🇷","유럽"], SWE:["스웨덴","🇸🇪","유럽"],
+      NOR:["노르웨이","🇳🇴","유럽"], FIN:["핀란드","🇫🇮","유럽"], DNK:["덴마크","🇩🇰","유럽"], ISL:["아이슬란드","🇮🇸","유럽"],
+      IRL:["아일랜드","🇮🇪","유럽"], RUS:["러시아","🇷🇺","유럽"],
+      USA:["미국","🇺🇸","북미"], CAN:["캐나다","🇨🇦","북미"], MEX:["멕시코","🇲🇽","북미"],
+      BRA:["브라질","🇧🇷","남미"], ARG:["아르헨티나","🇦🇷","남미"], PER:["페루","🇵🇪","남미"], CHL:["칠레","🇨🇱","남미"],
+      AUS:["호주","🇦🇺","오세아니아"], NZL:["뉴질랜드","🇳🇿","오세아니아"],
+      EGY:["이집트","🇪🇬","아프리카"], MAR:["모로코","🇲🇦","아프리카"], ZAF:["남아프리카공화국","🇿🇦","아프리카"], KEN:["케냐","🇰🇪","아프리카"],
+    };
+    const metaOf = (iso3, engName) => META[iso3] || [engName, "🌍", "기타"];
+
+    // ── 도시 검색: 우리 도시 DB(tm_cities) 먼저 → 없으면 OSM Nominatim ──
+    async function searchCities(q) {
+      const safe = q.replace(/[%,()]/g, " ").trim();
+      if (!safe) return [];
+      const out = [];
+
+      const { data } = await sb.from("tm_cities").select("*")
+        .or(`name.ilike.%${safe}%,display.ilike.%${safe}%`)
+        .order("hits", { ascending:false }).limit(5);
+      (data || []).forEach(c => out.push({
+        osm_id:c.osm_id, name:c.name, display:c.display, lat:c.lat, lng:c.lng,
+        country:c.country, country_code:c.country_code, cached:true,
+      }));
+
+      // 도시·행정구역을 POI(역 출입구 등)보다 위로 올리는 랭킹
+      const RANK = { city:0, town:0, village:0, municipality:0, borough:0,
+                     province:1, state:1, county:1, region:1, administrative:1,
+                     island:2, suburb:2, neighbourhood:3 };
+      const rankOf = p => RANK[p.addresstype] ?? RANK[p.type] ?? 6;
+
+      // 같은 이름·거의 같은 좌표는 하나로 접기 (역 출구 N개 방지)
+      const seen = new Set();
+      const add = (p) => {
+        const name = p.name || String(p.display_name).split(",")[0];
+        const lat = parseFloat(p.lat), lng = parseFloat(p.lon);
+        const key = `${name}@${lat.toFixed(2)},${lng.toFixed(2)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({
+          osm_id: p.osm_id, name, display: p.display_name, lat, lng,
+          country: p.address?.country || null,
+          country_code: (p.address?.country_code || "").toUpperCase(),
+          cached: false,
+        });
+      };
+
+      try {
+        const url = "https://nominatim.openstreetmap.org/search"
+          + `?q=${encodeURIComponent(safe)}&format=jsonv2&addressdetails=1&accept-language=ko&limit=10`;
+        const js = await (await fetch(url)).json();
+        js.sort((a, b) => rankOf(a) - rankOf(b));   // 도시 먼저
+        js.forEach(add);
+      } catch (e) { /* 지오코딩 실패해도 DB 결과는 유지 */ }
+
+      return out.slice(0, 8);
+    }
+
+    // 고른 도시를 도시 DB에 기록(중복이면 hits +1)
+    async function rememberCity(c) {
+      if (!c?.osm_id) return;
+      await sb.rpc("tm_remember_city", {
+        p_osm_id: c.osm_id, p_name: c.name, p_display: c.display,
+        p_country: c.country, p_cc: c.country_code, p_lat: c.lat, p_lng: c.lng,
+      });
+    }
+
+    const TOTAL_CONTINENTS = 7;
+    const REVEAL = { "아시아":"#14b8a6","유럽":"#6366f1","북미":"#f97316","남미":"#eab308","아프리카":"#ec4899","오세아니아":"#22c55e","기타":"#0f766e" };
+
+    // ─────────────────────────── 로그인 화면 ───────────────────────────
+    function AuthScreen() {
+      const [email, setEmail] = useState("suyong.song@griff.co.kr");
+      const [pw, setPw] = useState("");
+      const [signup, setSignup] = useState(false);
+      const [msg, setMsg] = useState("");
+      const [busy, setBusy] = useState(false);
+
+      const submit = async (e) => {
+        e.preventDefault(); setBusy(true); setMsg("");
+        const fn = signup ? sb.auth.signUp({ email, password:pw }) : sb.auth.signInWithPassword({ email, password:pw });
+        const { error } = await fn;
+        if (error) setMsg(error.message);
+        else if (signup) setMsg("가입 완료! 이제 로그인하세요.");
+        setBusy(false);
+      };
+
+      return (
+        <div className="h-screen w-screen flex items-center justify-center bg-[#0f1b2b] px-4">
+          <div className="w-full max-w-sm">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-2">🗺️</div>
+              <h1 className="text-2xl font-bold text-white serif">Trailmark</h1>
+              <p className="text-xs text-white/60 mt-1">Fill the world map with your own memories.</p>
+            </div>
+            <form onSubmit={submit} className="bg-[#faf6f0] rounded-2xl p-5 shadow-2xl space-y-3">
+              <div className="text-sm font-semibold text-[#2b2420]">{signup ? "회원가입" : "로그인"}</div>
+              <input className="inp" type="email" placeholder="이메일" value={email} onChange={e=>setEmail(e.target.value)} required />
+              <input className="inp" type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required />
+              <button className="btn-p w-full" disabled={busy}>{busy ? "처리 중…" : (signup ? "가입하기" : "로그인")}</button>
+              {msg && <div className="text-xs text-[#c2553a]">{msg}</div>}
+              <button type="button" onClick={()=>{setSignup(!signup); setMsg("");}}
+                className="w-full text-xs text-[#8a7d70] hover:text-[#2b2420]">
+                {signup ? "이미 계정이 있어요 → 로그인" : "처음이신가요? → 회원가입"}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────── 방문지 추가 모달 ───────────────────────────
+    function AddModal({ pending, onClose, onSaved }) {
+      const [q, setQ] = useState("");                 // 도시 검색어 (자연어)
+      const [results, setResults] = useState([]);
+      const [city, setCity] = useState(null);         // 선택된 도시(좌표 포함)
+      const [searching, setSearching] = useState(false);
+      const [date, setDate] = useState("");
+      const [title, setTitle] = useState("");
+      const [body, setBody] = useState("");
+      const [file, setFile] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState("");
+      const [ko, flag, continent] = metaOf(pending.iso3, pending.country);
+
+      // 자연어 입력 → 디바운스 후 도시 검색
+      useEffect(() => {
+        if (city || !q.trim()) { setResults([]); return; }
+        const t = setTimeout(async () => {
+          setSearching(true);
+          try { setResults(await searchCities(q)); } finally { setSearching(false); }
+        }, 450);
+        return () => clearTimeout(t);
+      }, [q, city]);
+
+      const save = async (e) => {
+        e.preventDefault(); setBusy(true); setErr("");
+        try {
+          const cityName = city?.name || q.trim();
+          if (!cityName) throw new Error("도시를 입력하세요.");
+          // 좌표: 검색으로 고른 도시 우선, 없으면 클릭 지점
+          const lat = city ? city.lat : pending.lat;
+          const lng = city ? city.lng : pending.lng;
+          if (city) rememberCity(city);           // 도시 DB에 축적
+
+          const { data: place, error: e1 } = await sb.from("tm_places").insert({
+            country: pending.country, country_ko: ko, city: cityName, flag, continent,
+            lat, lng, visited_at: date || null,
+          }).select().single();
+          if (e1) throw e1;
+
+          if (title.trim()) {
+            let photo_url = null;
+            if (file) {
+              const { data:{ user } } = await sb.auth.getUser();
+              const path = `${user.id}/${place.id}-${file.name.replace(/[^\w.]/g,"_")}`;
+              const { error: e2 } = await sb.storage.from("trip-photos").upload(path, file, { upsert:true });
+              if (e2) throw e2;
+              photo_url = sb.storage.from("trip-photos").getPublicUrl(path).data.publicUrl;
+            }
+            const { error: e3 } = await sb.from("tm_diary_entries")
+              .insert({ place_id: place.id, title, body, photo_url });
+            if (e3) throw e3;
+          }
+          onSaved();
+        } catch (ex) {
+          setErr(ex.message?.includes("duplicate") ? "이미 등록한 도시예요." : (ex.message || "저장 실패"));
+          setBusy(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
+          <form onClick={e=>e.stopPropagation()} onSubmit={save}
+            className="fade-in bg-[#faf6f0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-4 bg-gradient-to-br from-[#0f766e] to-[#134e4a] text-white">
+              <div className="text-3xl">{flag}</div>
+              <div className="font-bold text-lg serif mt-1">{ko}</div>
+              <div className="text-xs opacity-80">{pending.country} · {continent}</div>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="relative">
+                <label className="text-xs font-semibold text-[#8a7d70]">도시 * <span className="font-normal text-[#b5a99a]">— 자연어로 검색하세요</span></label>
+                {city ? (
+                  <div className="mt-1 flex items-start gap-2 bg-white border border-[#0f766e] rounded-[10px] px-3 py-2">
+                    <span className="text-[#0f766e] mt-0.5">📍</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-[#2b2420]">{city.name}</div>
+                      <div className="text-[11px] text-[#8a7d70] truncate">{city.display}</div>
+                      <div className="text-[10px] text-[#0f766e] mt-0.5">
+                        {city.lat.toFixed(4)}, {city.lng.toFixed(4)} {city.cached ? "· 도시 DB" : "· OSM"}
+                      </div>
+                    </div>
+                    <button type="button" onClick={()=>{ setCity(null); setQ(""); }}
+                      className="text-xs text-[#8a7d70] hover:text-[#c2553a]">변경</button>
+                  </div>
+                ) : (
+                  <input className="inp mt-1" value={q} onChange={e=>setQ(e.target.value)}
+                    placeholder="예) 제주, 교토 기온, 파리 에펠탑" autoComplete="off" />
+                )}
+
+                {!city && q.trim() && (
+                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-[#eaddcc] overflow-hidden">
+                    {searching && <div className="px-3 py-2 text-xs text-[#b5a99a]">검색 중…</div>}
+                    {!searching && results.length === 0 &&
+                      <div className="px-3 py-2 text-xs text-[#b5a99a]">결과 없음 — 그대로 두면 클릭한 지점에 표시됩니다</div>}
+                    {results.map(r => (
+                      <button key={r.osm_id} type="button" onClick={()=>{ setCity(r); setResults([]); }}
+                        className="w-full text-left px-3 py-2 hover:bg-[#f7f2ea] border-b border-[#f5efe6] last:border-0">
+                        <div className="text-sm text-[#2b2420] flex items-center gap-1.5">
+                          {r.name}
+                          {r.cached && <span className="text-[9px] bg-[#0f766e]/10 text-[#0f766e] px-1.5 py-0.5 rounded">DB</span>}
+                        </div>
+                        <div className="text-[11px] text-[#8a7d70] truncate">{r.display}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#8a7d70]">방문일</label>
+                <input className="inp mt-1" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+              </div>
+              <div className="pt-1 border-t border-[#eaddcc]">
+                <label className="text-xs font-semibold text-[#8a7d70]">여행 다이어리 (선택)</label>
+                <input className="inp mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" />
+                <textarea className="inp mt-2" rows="3" value={body} onChange={e=>setBody(e.target.value)} placeholder="그날의 기억을 남겨보세요" />
+                <input className="inp mt-2 text-xs" type="file" accept="image/*" onChange={e=>setFile(e.target.files[0])} />
+              </div>
+              {err && <div className="text-xs text-[#c2553a]">{err}</div>}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose} className="flex-1 text-sm text-[#8a7d70] py-2.5">취소</button>
+                <button className="btn-p flex-1" disabled={busy}>{busy ? "저장 중…" : "지도에 새기기"}</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    function Stat({ label, value, sub }) {
+      return (
+        <div className="flex-1 text-center px-2">
+          <div className="text-2xl font-bold text-[#2b2420] serif">{value}</div>
+          <div className="text-[11px] text-[#8a7d70] mt-0.5">{label}</div>
+          {sub && <div className="text-[10px] text-[#0f766e] mt-0.5">{sub}</div>}
+        </div>
+      );
+    }
+
+    function DiaryCard({ p, active, onClick, onDelete }) {
+      const entry = p.tm_diary_entries?.[0];
+      const color = REVEAL[p.continent] || "#0f766e";
+      return (
+        <div className={`rounded-2xl overflow-hidden bg-white shadow-sm transition-all border-2 ${active ? "border-[#0f766e] shadow-lg" : "border-transparent hover:shadow-md"}`}>
+          <button onClick={onClick} className="w-full text-left">
+            {entry?.photo_url
+              ? <div className="h-28 bg-cover bg-center" style={{backgroundImage:`url(${entry.photo_url})`}} />
+              : <div className="h-24 flex items-center justify-between px-4" style={{background:`linear-gradient(135deg, ${color}, ${color}bb)`}}>
+                  <span className="text-4xl drop-shadow">{p.flag || "🌍"}</span>
+                  {p.visited_at && <span className="text-white/90 text-xs font-medium bg-black/20 px-2 py-1 rounded-full">{p.visited_at}</span>}
+                </div>}
+            <div className="p-3.5">
+              <div className="flex items-center gap-1.5 text-[#8a7d70] text-xs mb-1"><span>📍</span><span>{p.country_ko || p.country} · {p.city}</span></div>
+              {entry ? (
+                <>
+                  <div className="font-semibold text-[#2b2420] text-[15px] leading-snug serif">{entry.title}</div>
+                  <p className="text-[13px] text-[#6b5f54] mt-1.5 line-clamp-2">{entry.body}</p>
+                </>
+              ) : <div className="text-[13px] text-[#b5a99a] italic">아직 다이어리가 없어요</div>}
+            </div>
+          </button>
+          <button onClick={onDelete} className="w-full text-[11px] text-[#b5a99a] hover:text-[#c2553a] py-1.5 border-t border-[#f5efe6]">삭제</button>
+        </div>
+      );
+    }
+
+    // ─────────────────────────── 메인 앱 ───────────────────────────
+    function MapApp({ session }) {
+      const mapRef = useRef(null), tileRef = useRef(null), geoRef = useRef(null), markersRef = useRef({});
+      const modeRef = useRef("scratch"), addRef = useRef(false), visitedRef = useRef(new Map());
+
+      const [places, setPlaces] = useState([]);
+      const [selected, setSelected] = useState(null);
+      const [mode, setMode] = useState("scratch");
+      const [addMode, setAddMode] = useState(false);
+      const [pending, setPending] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      // ── 데이터 로드 ──
+      const load = useCallback(async () => {
+        const { data, error } = await sb.from("tm_places")
+          .select("*, tm_diary_entries(*)")
+          .order("visited_at", { ascending:false, nullsFirst:false });
+        if (!error) setPlaces(data || []);
+        setLoading(false);
+      }, []);
+      useEffect(() => { load(); }, [load]);
+
+      // 방문국 Map: country(영문 GeoJSON명) → 대륙 (색칠 매칭용)
+      useEffect(() => {
+        const m = new Map();
+        places.forEach(p => m.set(p.country, p.continent || "기타"));
+        visitedRef.current = m;
+      }, [places]);
+
+      const stats = useMemo(() => {
+        const countries = new Set(places.map(p => p.country));
+        const conts = new Set(places.map(p => p.continent).filter(c => c && c !== "기타"));
+        return { countries:countries.size, cities:places.length, continents:conts.size,
+                 progress: Math.round((conts.size/TOTAL_CONTINENTS)*100) };
+      }, [places]);
+
+      // 스타일 정의
+      const styleFor = (feature, m) => {
+        const on = visitedRef.current.has(feature.properties.name);
+        if (m === "scratch") {
+          return on
+            ? { fillColor: REVEAL[visitedRef.current.get(feature.properties.name)] || "#0f766e", fillOpacity:.92, color:"#fff", weight:1.2, opacity:.95, dashArray:null }
+            : { fillColor:"#c9cdd4", fillOpacity:1, color:"#0f1b2b", weight:.6, opacity:.5, dashArray:null };
+        }
+        return on
+          ? { fillColor:"#0f766e", fillOpacity:.5, color:"#0d5c56", weight:1.5, opacity:.9, dashArray:"3" }
+          : { fillColor:"#000", fillOpacity:0, color:"#000", weight:0, opacity:0, dashArray:null };
+      };
+      const hoverStyle = m => m === "scratch"
+        ? { fillColor:"#f2c14e", fillOpacity:.9,  color:"#ffffff", weight:2.5, opacity:1, dashArray:null }
+        : { fillColor:"#e07a5f", fillOpacity:.55, color:"#c2553a", weight:2.5, opacity:1, dashArray:null };
+
+      // ── 지도 1회 초기화 ──
+      useEffect(() => {
+        const map = L.map("map", { worldCopyJump:true, minZoom:2, maxBounds:[[-85,-200],[85,200]] }).setView([25,20], 2.4);
+        mapRef.current = map;
+        tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          { attribution:'© OpenStreetMap', maxZoom:18 }).addTo(map);
+        setTimeout(()=>map.invalidateSize(), 200);
+        window.addEventListener("resize", ()=>map.invalidateSize());
+
+        fetch(GEO_URL).then(r=>r.json()).then(geo => {
+          geoRef.current = L.geoJSON(geo, {
+            style: f => styleFor(f, modeRef.current),
+            onEachFeature: (f, layer) => {
+              layer.bindTooltip(f.properties.name, { permanent:false, direction:"center", className:"ctry-label", opacity:1 });
+              layer.on("mouseover", () => {
+                layer.setStyle(hoverStyle(modeRef.current));
+                layer.bringToFront();
+                layer.getElement()?.classList.add("ctry-hover");
+                layer.openTooltip();
+              });
+              layer.on("mouseout", () => {
+                layer.getElement()?.classList.remove("ctry-hover");
+                layer.setStyle(styleFor(f, modeRef.current));
+                const keep = modeRef.current === "scratch" && visitedRef.current.has(f.properties.name);
+                if (!keep) layer.closeTooltip();
+              });
+              layer.on("click", (e) => {
+                if (addRef.current) {                       // 추가 모드: 그 나라에 방문지 새기기
+                  setPending({ country:f.properties.name, iso3:f.id, lat:e.latlng.lat, lng:e.latlng.lng });
+                  setAddMode(false);
+                }
+              });
+            },
+          }).addTo(map);
+          applyMode();                                       // 첫 스타일/라벨 적용
+        });
+      }, []);
+
+      // ── 모드/데이터 변경 시 스타일·라벨 재적용 ──
+      const applyMode = useCallback(() => {
+        const el = document.getElementById("map"); if (!el) return;
+        el.classList.toggle("scratch", modeRef.current === "scratch");
+        el.classList.toggle("real", modeRef.current === "real");
+        if (tileRef.current) tileRef.current.setOpacity(modeRef.current === "real" ? 1 : 0);
+        if (!geoRef.current) return;
+        geoRef.current.eachLayer(layer => {
+          const f = layer.feature;
+          layer.setStyle(styleFor(f, modeRef.current));
+          const show = modeRef.current === "scratch" && visitedRef.current.has(f.properties.name);
+          const tip = layer.getTooltip();
+          if (tip) { tip.options.permanent = show; show ? layer.openTooltip() : layer.closeTooltip(); }
+        });
+      }, []);
+
+      useEffect(() => { modeRef.current = mode; applyMode(); }, [mode, applyMode]);
+      useEffect(() => { applyMode(); }, [places, applyMode]);
+      useEffect(() => { addRef.current = addMode;
+        document.getElementById("map")?.classList.toggle("adding", addMode); }, [addMode]);
+
+      // ── 방문지 핀 동기화 ──
+      useEffect(() => {
+        const map = mapRef.current; if (!map) return;
+        Object.values(markersRef.current).forEach(mk => map.removeLayer(mk));
+        markersRef.current = {};
+        places.forEach(p => {
+          const icon = L.divIcon({ className:"", html:`<div class="pin"><span>${p.flag||"🌍"}</span></div>`, iconSize:[34,34], iconAnchor:[17,34] });
+          const mk = L.marker([p.lat, p.lng], { icon }).addTo(map);
+          mk.bindPopup(`<b>${p.country_ko||p.country} · ${p.city}</b>`);
+          mk.on("click", () => setSelected(p.id));
+          markersRef.current[p.id] = mk;
+        });
+      }, [places]);
+
+      // ── 선택 → 이동 + 핀 강조 ──
+      useEffect(() => {
+        Object.entries(markersRef.current).forEach(([id, mk]) => {
+          const el = mk.getElement()?.querySelector(".pin");
+          if (el) el.classList.toggle("active", id === selected);
+        });
+        const p = places.find(x => x.id === selected);
+        if (p && mapRef.current) { mapRef.current.flyTo([p.lat, p.lng], 5, { duration:1 }); markersRef.current[p.id]?.openPopup(); }
+      }, [selected, places]);
+
+      const remove = async (id) => {
+        if (!confirm("이 방문지와 다이어리를 삭제할까요?")) return;
+        await sb.from("tm_places").delete().eq("id", id);
+        if (selected === id) setSelected(null);
+        load();
+      };
+
+      const selPlace = places.find(p => p.id === selected);
+      const selEntry = selPlace?.tm_diary_entries?.[0];
+
+      return (
+        <div className="h-screen w-screen flex flex-col md:flex-row overflow-hidden">
+          <aside className="w-full md:w-[380px] flex-shrink-0 h-[45vh] md:h-full flex flex-col bg-[#faf6f0] border-r border-[#eaddcc]">
+            <div className="px-5 pt-5 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🗺️</span>
+                <h1 className="text-xl font-bold text-[#2b2420] serif">Trailmark</h1>
+                <button onClick={()=>sb.auth.signOut()} className="ml-auto text-[11px] text-[#8a7d70] hover:text-[#c2553a]">로그아웃</button>
+              </div>
+              <p className="text-xs text-[#8a7d70] mt-1 truncate">{session.user.email}</p>
+            </div>
+
+            <div className="mx-4 mb-3 rounded-2xl bg-white shadow-sm py-3 flex divide-x divide-[#f0e7da]">
+              <Stat label="방문 국가" value={stats.countries} />
+              <Stat label="도시 기록" value={stats.cities} />
+              <Stat label="대륙 진행률" value={`${stats.progress}%`} sub={`${stats.continents}/${TOTAL_CONTINENTS}`} />
+            </div>
+
+            <div className="px-4 pb-2">
+              <button onClick={()=>setAddMode(!addMode)}
+                className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${addMode ? "bg-[#e07a5f] text-white" : "bg-[#0f766e] text-white hover:opacity-90"}`}>
+                {addMode ? "✕ 추가 취소 — 지도에서 나라를 클릭하세요" : "➕ 방문지 추가"}
+              </button>
+            </div>
+
+            <div className="px-4 pb-1 text-[11px] font-semibold text-[#a1937f] tracking-wide uppercase">여행 다이어리</div>
+            <div className="flex-1 overflow-y-auto card-scroll px-4 pb-4 space-y-3">
+              {loading && <div className="text-sm text-[#b5a99a] text-center py-8">불러오는 중…</div>}
+              {!loading && places.length === 0 &&
+                <div className="text-center py-10 px-4">
+                  <div className="text-4xl mb-2">✦</div>
+                  <div className="text-sm text-[#8a7d70]">아직 긁은 나라가 없어요.<br/>“방문지 추가”로 첫 나라를 새겨보세요.</div>
+                </div>}
+              {places.map(p => (
+                <DiaryCard key={p.id} p={p} active={p.id===selected}
+                  onClick={()=>setSelected(p.id===selected ? null : p.id)} onDelete={()=>remove(p.id)} />
+              ))}
+            </div>
+          </aside>
+
+          <main className="relative flex-1 h-[55vh] md:h-full">
+            <div id="map" className="scratch"></div>
+
+            <div className="absolute top-3 left-3 z-[500] seg">
+              <button className={mode==="scratch" ? "on" : ""} onClick={()=>setMode("scratch")}>✦ 스크래치</button>
+              <button className={mode==="real" ? "on" : ""} onClick={()=>setMode("real")}>🛰️ 실사</button>
+            </div>
+
+            {addMode && (
+              <div className="fade-in absolute top-16 left-1/2 -translate-x-1/2 z-[500] bg-[#e07a5f] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg">
+                🖱️ 다녀온 나라를 지도에서 클릭하세요
+              </div>
+            )}
+
+            <div className="absolute top-3 right-3 z-[500] bg-white/90 backdrop-blur px-3 py-2 rounded-xl shadow text-[11px] text-[#6b5f54] space-y-1">
+              {mode==="scratch" ? (<>
+                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:"#14b8a6"}}></span>긁어낸 나라 (방문)</div>
+                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:"#c9cdd4"}}></span>은박 (미방문)</div>
+              </>) : (
+                <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#0f766e]/40"></span>방문한 나라</div>
+              )}
+            </div>
+
+            {selPlace && (
+              <div className="fade-in absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[360px] z-[500] bg-white rounded-2xl shadow-2xl overflow-hidden">
+                {selEntry?.photo_url
+                  ? <div className="h-36 bg-cover bg-center" style={{backgroundImage:`url(${selEntry.photo_url})`}} />
+                  : <div className="h-28 flex items-end p-4" style={{background:`linear-gradient(135deg, ${REVEAL[selPlace.continent]||"#0f766e"}, #0f766e)`}}>
+                      <span className="text-5xl drop-shadow-lg">{selPlace.flag||"🌍"}</span>
+                    </div>}
+                <div className="p-4">
+                  <div className="text-xs text-[#8a7d70]">{selPlace.country_ko||selPlace.country} · {selPlace.city}{selPlace.visited_at ? ` · ${selPlace.visited_at}` : ""}</div>
+                  {selEntry ? (<>
+                    <h3 className="font-bold text-[#2b2420] serif text-lg leading-snug mt-1">{selEntry.title}</h3>
+                    <p className="text-sm text-[#6b5f54] mt-2 leading-relaxed whitespace-pre-wrap">{selEntry.body}</p>
+                  </>) : <div className="text-sm text-[#b5a99a] italic mt-2">다이어리가 아직 없어요.</div>}
+                  <button onClick={()=>setSelected(null)} className="mt-3 text-xs text-[#8a7d70] hover:text-[#2b2420]">✕ 닫기</button>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {pending && <AddModal pending={pending} onClose={()=>setPending(null)}
+            onSaved={()=>{ setPending(null); load(); }} />}
+        </div>
+      );
+    }
+
+    function Root() {
+      const [session, setSession] = useState(undefined);
+      useEffect(() => {
+        sb.auth.getSession().then(({data}) => setSession(data.session));
+        const { data:{ subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+        return () => subscription.unsubscribe();
+      }, []);
+      if (session === undefined) return <div className="h-screen flex items-center justify-center text-[#8a7d70]">불러오는 중…</div>;
+      return session ? <MapApp session={session} /> : <AuthScreen />;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+  </script>
+</body>
+</html>
