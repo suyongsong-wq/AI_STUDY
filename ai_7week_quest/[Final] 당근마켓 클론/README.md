@@ -112,22 +112,32 @@ python3 -m http.server 8899
 
 ---
 
-## ⚠️ 운영 메모 — 이메일 확인 설정
+## 화면
 
-현재 Supabase에 **"Confirm email"이 켜져 있어**, 새로 가입하면 확인 메일을 받아야 로그인됩니다.
-(앱은 이 경우 "가입 확인 메일을 보냈어요" 안내를 띄우고 로그인 탭으로 보냅니다.)
+`screenshots/` — 로그인·회원가입 / 홈(목록·카테고리) / 상품등록 / 상품상세 / 1:1 채팅 / 마이페이지 (440×880)
 
-다른 사람에게 공유해 바로 가입시키려면 대시보드에서 꺼야 합니다 — **SQL로는 불가능한 유일한 수동 단계**입니다.
+---
 
-> Supabase 대시보드 → Authentication → Providers → Email → **Confirm email 끄기**
+## 운영 메모 — 이메일 확인은 꺼둠 ✅
 
-무료 등급은 메일 발송 한도가 낮아, 켜둔 채로 여러 명이 가입하면 `over_email_send_rate_limit`가 납니다.
+가입 즉시 로그인되도록 **`mailer_autoconfirm = true`** 로 설정했습니다.
+켜져 있으면 가입자마다 확인 메일이 나가고, 무료 등급에선 곧 `over_email_send_rate_limit`가 납니다.
+
+대시보드(Authentication → Providers → Email → Confirm email) 말고 **Management API로도 바꿀 수 있습니다**:
+
+```bash
+curl -X PATCH "https://api.supabase.com/v1/projects/<project-ref>/config/auth" \
+  -H "Authorization: Bearer <sbp_ 액세스 토큰>" \
+  -H "Content-Type: application/json" \
+  -d '{"mailer_autoconfirm": true}'
+```
+
+설정 후 **완전 신규 계정으로 전 구간 재검증 완료** — 가입 → 프로필(닉네임·동네) → 채팅방 개설 → 메시지 전송 → 찜까지 SQL 우회 없이 통과.
 
 ---
 
 ## 남은 작업 (제출 전)
 
-- [ ] 위 **Confirm email 끄기**
 - [ ] 시연 영상 1분 이내 (가입 → 상품 등록 → 검색 → 채팅)
 - [ ] 본인 외 1명 이상 실제 가입 & 채팅 스크린샷
 - [ ] 에이전트 대화 스크린샷
