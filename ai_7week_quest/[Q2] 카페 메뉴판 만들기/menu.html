@@ -1,132 +1,140 @@
 <meta charset="utf-8">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
+  /* Ember Roasters 실제 디자인 시스템 (ai_6week_study 커피 쇼핑몰) */
   html,body{width:1080px;height:1350px;overflow:hidden;
-    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
-
-  /* 하버스카페 팔레트 — 원목+스틸 무드, "harbor" = 딥 틸 앵커색 (3색: 크림 / 잉크 / 틸) */
+    font-family:'Space Grotesk','Apple SD Gothic Neo','Pretendard',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
   :root{
-    --cream:#F3ECDD;      /* 따뜻한 종이 배경 */
-    --card:#FBF7EE;       /* 시그니처 카드 */
-    --ink:#211D18;        /* 잉크 (제목·가격) */
-    --sub:#7C7266;        /* 보조 텍스트 */
-    --teal:#1E4F49;       /* 하버 틸 (강조 1색) */
-    --line:#D9CFBC;       /* 구분선 */
+    --ink:#0b0a09; --panel:#141210; --paper:#ece6dc; --ember:#ff5a1f; --muted:#8b8178;
+    --line:rgba(255,255,255,.12);
   }
-  .serif{font-family:"Gowun Batang",serif}
+  .mono{font-family:'Space Mono',monospace}
 
-  .page{width:1080px;height:1350px;background:var(--cream);
-    padding:74px 76px 56px;display:flex;flex-direction:column;position:relative}
-  /* 종이 질감 미세 비네트 */
-  .page::after{content:"";position:absolute;inset:0;pointer-events:none;
-    box-shadow:inset 0 0 220px rgba(90,70,40,.06)}
+  .page{width:1080px;height:1350px;position:relative;overflow:hidden;background:var(--ink);
+    padding:66px 72px 40px;display:flex;flex-direction:column}
+  /* 필름 그레인 */
+  .page::before{content:"";position:absolute;inset:0;opacity:.05;pointer-events:none;z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  /* 앰버 글로우 */
+  .page::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(120% 70% at 50% -8%, rgba(255,90,31,.12), transparent 60%)}
+  .z{position:relative;z-index:1}
 
   /* ── 헤더 ── */
-  .head{text-align:center}
-  .kicker{font-size:20px;font-weight:600;letter-spacing:.42em;color:var(--teal);
-    text-indent:.42em}
-  .wordmark{margin-top:20px;font-size:82px;font-weight:700;color:var(--ink);
-    letter-spacing:-.01em;line-height:1}
-  .latin{margin-top:12px;font-size:24px;font-weight:600;letter-spacing:.34em;
-    color:var(--sub);text-indent:.34em}
-  .rule{display:flex;align-items:center;justify-content:center;gap:20px;margin:26px 0 4px}
-  .rule i{height:1px;width:150px;background:var(--line)}
-  .rule .anchor{font-size:26px;color:var(--teal)}
-  .slogan{font-size:23px;font-weight:500;color:var(--sub);letter-spacing:-.01em}
+  .top{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:15px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .wm{margin-top:30px;display:flex;align-items:flex-start;gap:8px}
+  .wm h1{font-size:82px;font-weight:700;letter-spacing:-.03em;color:var(--paper);line-height:.9}
+  .wm sup{color:var(--ember);font-size:34px;line-height:1;margin-top:6px}
+  .sub{margin-top:22px;font-size:16px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--muted);display:flex;align-items:center;gap:14px}
+  .sub b{color:var(--ember);font-weight:700}
 
-  /* ── 시그니처 카드 (시각적 무게 몰아주기) ── */
-  .sig{margin-top:32px;height:252px;background:var(--card);border:1px solid var(--line);
-    border-radius:20px;display:flex;align-items:center;gap:32px;padding:0 36px;
-    box-shadow:0 12px 30px rgba(90,70,40,.08)}
-  .sig .ph{width:196px;height:196px;flex:none;border-radius:16px;overflow:hidden;
-    background:#2a231c}
+  /* ── 마퀴 스트립 ── */
+  .strip{margin-top:26px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    padding:13px 0;display:flex;gap:26px;font-size:14px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--muted);overflow:hidden;white-space:nowrap}
+  .strip .x{color:var(--ember);margin-right:8px}
+
+  /* ── 시그니처 배너 ── */
+  .sig{margin-top:26px;display:flex;align-items:center;gap:30px;
+    background:linear-gradient(120deg,#17130f,#0e0c0a);border:1px solid var(--line);
+    padding:26px 30px;position:relative}
+  .sig::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ember)}
+  .sig .ph{width:170px;height:170px;flex:none;background:var(--ink);overflow:hidden;
+    border:1px solid var(--line)}
   .sig .ph img{width:100%;height:100%;object-fit:cover;display:block}
-  .sig .info{flex:1;display:flex;flex-direction:column;justify-content:center}
-  .sig .tag{display:inline-block;align-self:flex-start;background:var(--teal);color:#F3ECDD;
-    font-size:16px;font-weight:700;letter-spacing:.14em;padding:6px 15px;border-radius:999px}
-  .sig .nm{margin-top:15px;font-size:44px;font-weight:700;color:var(--ink);letter-spacing:-.02em;
-    line-height:1}
-  .sig .ds{margin-top:13px;font-size:21px;font-weight:500;color:var(--sub);line-height:1.42;
-    letter-spacing:-.01em}
-  .sig .pr{margin-top:16px;font-size:32px;font-weight:700;color:var(--teal);letter-spacing:-.01em}
+  .sig .info{flex:1}
+  .sig .lb{font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--ember);font-weight:700}
+  .sig .nm{margin-top:12px;font-size:42px;font-weight:700;letter-spacing:-.02em;color:var(--paper);line-height:1}
+  .sig .ds{margin-top:12px;font-size:16px;color:var(--muted);line-height:1.5;max-width:440px}
+  .sig .meta{margin-top:16px;display:flex;align-items:center;gap:16px}
+  .sig .roast{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);
+    background:var(--ember);padding:5px 12px;font-weight:700}
+  .sig .pr{font-size:30px;font-weight:700;color:var(--paper)}
 
-  /* ── 메뉴 리스트 ── */
-  .menu{flex:1;margin-top:34px;display:flex;flex-direction:column;justify-content:space-between}
-  .cat{}
-  .cat + .cat{margin-top:26px}
-  .cathd{display:flex;align-items:baseline;gap:16px;margin-bottom:16px}
-  .cathd .ko{font-size:29px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
-  .cathd .en{font-size:16px;font-weight:600;letter-spacing:.22em;color:var(--teal)}
+  /* ── 원두 리스트 ── */
+  .menu{flex:1;margin-top:30px;display:flex;flex-direction:column;justify-content:space-between}
+  .cat + .cat{margin-top:20px}
+  .cathd{display:flex;align-items:baseline;gap:14px;margin-bottom:12px}
+  .cathd .no{font-size:15px;color:var(--ember);font-weight:700}
+  .cathd .ko{font-size:15px;letter-spacing:.24em;text-transform:uppercase;color:var(--paper);font-weight:700}
   .cathd .ln{flex:1;height:1px;background:var(--line)}
 
-  .item{display:flex;align-items:baseline;gap:14px;padding:9px 0}
-  .item .iname{font-size:26px;font-weight:600;color:var(--ink);letter-spacing:-.015em;
-    flex:none;display:flex;align-items:baseline;gap:10px}
-  .item .star{color:var(--teal);font-size:20px}
-  .item .idesc{font-size:17px;font-weight:500;color:var(--sub);letter-spacing:-.01em}
-  .item .dots{flex:1;border-bottom:2px dotted var(--line);transform:translateY(-6px)}
-  .item .price{font-size:25px;font-weight:700;color:var(--ink);letter-spacing:-.01em;flex:none;
-    font-variant-numeric:tabular-nums}
+  .item{display:flex;align-items:center;gap:16px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .item:last-child{border-bottom:none}
+  .item .nm{font-size:25px;font-weight:600;color:var(--paper);letter-spacing:-.015em;flex:none;
+    display:flex;align-items:center;gap:9px}
+  .item .star{color:var(--ember);font-size:18px}
+  .item .or{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .item .sp{flex:1}
+  .item .roast{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--line);padding:4px 10px;flex:none}
+  .item .roast.L{color:#fcd34d;border-color:rgba(252,211,77,.4)}
+  .item .roast.M{color:#fb923c;border-color:rgba(251,146,60,.4)}
+  .item .roast.D{color:var(--muted)}
+  .item .pr{font-size:22px;font-weight:700;color:var(--paper);flex:none;width:110px;text-align:right}
 
   /* ── 푸터 ── */
-  .foot{margin-top:30px;padding-top:22px;border-top:1px solid var(--line);
+  .foot{margin-top:26px;padding-top:20px;border-top:1px solid var(--line);
     display:flex;justify-content:space-between;align-items:center}
-  .foot .l{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
-  .foot .l span{color:var(--sub);font-weight:500}
-  .foot .r{font-size:18px;font-weight:600;color:var(--teal);letter-spacing:.04em}
+  .foot .l{font-size:20px;font-weight:700;letter-spacing:-.01em;color:var(--paper)}
+  .foot .l sup{color:var(--ember)}
+  .foot .r{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .foot .r b{color:var(--ember)}
 </style>
 
 <div class="page">
-  <!-- 헤더 -->
-  <div class="head">
-    <div class="kicker">SEONGSU · SPECIALTY COFFEE</div>
-    <div class="wordmark serif">하버스카페</div>
-    <div class="latin">HARBORS CAFE</div>
-    <div class="rule"><i></i><span class="anchor">⚓</span><i></i></div>
-    <div class="slogan">잠시 닻을 내리는 곳</div>
+ <div class="z">
+  <div class="top"><span>(Specialty Coffee Roasters)</span><span>Est. 2026 — Seoul, KR</span></div>
+  <div class="wm"><h1>EMBER<br>ROASTERS</h1><sup>®</sup></div>
+  <div class="sub"><span>Bean Menu · 원두 아카이브</span><span class="mono" style="color:var(--muted)">—</span><span><b>ROASTED</b> TO ORDER</span></div>
+
+  <div class="strip mono">
+    <span><span class="x">✳</span>SINGLE ORIGIN</span><span><span class="x">✳</span>BLEND</span>
+    <span><span class="x">✳</span>DRIP BAG</span><span><span class="x">✳</span>ROASTED TO ORDER</span>
+    <span><span class="x">✳</span>SPECIALTY GRADE</span>
   </div>
 
   <!-- 시그니처 -->
   <div class="sig">
-    <div class="ph"><img src="생성이미지/drink_흑임자라떼.svg" alt="흑임자 라떼"></div>
+    <div class="ph"><img src="생성이미지/ember_원두백.svg" alt="엠버 시그니처 블렌드"></div>
     <div class="info">
-      <span class="tag">SIGNATURE</span>
-      <div class="nm serif">흑임자 라떼</div>
-      <div class="ds">직접 볶은 흑임자를 갈아 넣은,<br>고소하고 진한 하버스카페의 얼굴.</div>
-      <div class="pr">6,000</div>
+      <div class="lb mono">✳ Signature Blend</div>
+      <div class="nm">엠버 시그니처 블렌드</div>
+      <div class="ds">다크 초콜릿과 스모키한 여운. 에스프레소·드립 모두 어울리는 하우스 블렌드 — 주문 후 볶아 갓 볶은 향 그대로.</div>
+      <div class="meta"><span class="roast mono">MEDIUM-DARK ROAST · 200G</span><span class="pr mono">₩17,000</span></div>
     </div>
   </div>
 
-  <!-- 메뉴 -->
+  <!-- 원두 리스트 -->
   <div class="menu">
     <div class="cat">
-      <div class="cathd"><span class="ko serif">커피</span><span class="en">COFFEE</span><span class="ln"></span></div>
-      <div class="item"><span class="iname">아메리카노</span><span class="idesc">에스프레소 + 물</span><span class="dots"></span><span class="price">4,500</span></div>
-      <div class="item"><span class="iname">콜드브루</span><span class="idesc">12시간 저온 추출</span><span class="dots"></span><span class="price">5,000</span></div>
-      <div class="item"><span class="iname">카페 라떼</span><span class="idesc">부드러운 우유 거품</span><span class="dots"></span><span class="price">5,500</span></div>
-      <div class="item"><span class="iname">에스프레소</span><span class="idesc">진한 한 샷</span><span class="dots"></span><span class="price">4,000</span></div>
+      <div class="cathd"><span class="no mono">01</span><span class="ko">싱글오리진 / Single Origin</span><span class="ln"></span></div>
+      <div class="item"><span class="nm">에티오피아 예가체프</span><span class="or mono">Floral · Citrus</span><span class="sp"></span><span class="roast mono L">Light</span><span class="pr mono">₩19,000</span></div>
+      <div class="item"><span class="nm">콜롬비아 수프리모</span><span class="or mono">Nutty · Cocoa</span><span class="sp"></span><span class="roast mono M">Medium</span><span class="pr mono">₩18,000</span></div>
+      <div class="item"><span class="nm">케냐 AA</span><span class="or mono">Berry · Wine</span><span class="sp"></span><span class="roast mono M">Medium</span><span class="pr mono">₩21,000</span></div>
     </div>
 
     <div class="cat">
-      <div class="cathd"><span class="ko serif">시그니처 · 라떼</span><span class="en">SIGNATURE</span><span class="ln"></span></div>
-      <div class="item"><span class="iname">흑임자 라떼 <span class="star">★</span></span><span class="idesc">대표 시그니처</span><span class="dots"></span><span class="price">6,000</span></div>
-      <div class="item"><span class="iname">말차 라떼</span><span class="idesc">우지 말차</span><span class="dots"></span><span class="price">6,000</span></div>
-      <div class="item"><span class="iname">곡물 라떼</span><span class="idesc">구수한 미숫가루</span><span class="dots"></span><span class="price">5,800</span></div>
+      <div class="cathd"><span class="no mono">02</span><span class="ko">블렌드 / Blend</span><span class="ln"></span></div>
+      <div class="item"><span class="nm">엠버 시그니처 블렌드 <span class="star">✳</span></span><span class="or mono">House · Signature</span><span class="sp"></span><span class="roast mono D">Med-Dark</span><span class="pr mono">₩17,000</span></div>
+      <div class="item"><span class="nm">다크 엠버 블렌드</span><span class="or mono">Smoky · Bold</span><span class="sp"></span><span class="roast mono D">Dark</span><span class="pr mono">₩17,000</span></div>
+      <div class="item"><span class="nm">디카페인 블렌드</span><span class="or mono">Sweet · Round</span><span class="sp"></span><span class="roast mono M">Medium</span><span class="pr mono">₩18,000</span></div>
     </div>
 
     <div class="cat">
-      <div class="cathd"><span class="ko serif">디저트</span><span class="en">DESSERT</span><span class="ln"></span></div>
-      <div class="item"><span class="iname">바스크 치즈케이크</span><span class="idesc">꾸덕한 식감 · 당일 생산</span><span class="dots"></span><span class="price">6,500</span></div>
-      <div class="item"><span class="iname">플레인 스콘</span><span class="idesc">겉바속촉</span><span class="dots"></span><span class="price">4,000</span></div>
-      <div class="item"><span class="iname">흑임자 쿠키</span><span class="idesc">시그니처 페어링</span><span class="dots"></span><span class="price">3,500</span></div>
+      <div class="cathd"><span class="no mono">03</span><span class="ko">드립백 / Drip Bag</span><span class="ln"></span></div>
+      <div class="item"><span class="nm">예가체프 드립백</span><span class="or mono">10 EA · Floral</span><span class="sp"></span><span class="roast mono L">Light</span><span class="pr mono">₩14,000</span></div>
+      <div class="item"><span class="nm">시그니처 드립백</span><span class="or mono">10 EA · Balanced</span><span class="sp"></span><span class="roast mono D">Med-Dark</span><span class="pr mono">₩13,000</span></div>
     </div>
   </div>
 
-  <!-- 푸터 -->
   <div class="foot">
-    <div class="l">서울 성수동 골목 안쪽 <span>· 10:00–22:00</span></div>
-    <div class="r">@harbors.cafe · 02-1234-5678</div>
+    <div class="l">EMBER ROASTERS<sup>®</sup></div>
+    <div class="r mono">@ember.roasters &nbsp;·&nbsp; <b>FREE SHIPPING</b> ₩30,000+</div>
   </div>
+ </div>
 </div>
