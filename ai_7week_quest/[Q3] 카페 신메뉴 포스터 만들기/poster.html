@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1350px;overflow:hidden;
+    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  .serif{font-family:"Gowun Batang",serif}
+
+  /* 하버스카페 톤 유지 — 포스터는 다크 반전(무디), 강조색 = 하버 틸 + 크림 */
+  :root{ --teal:#2FA894; --teal-d:#1E4F49; --cream:#F3ECDD; --sub:#B8AE9C; }
+
+  .poster{width:1080px;height:1350px;position:relative;overflow:hidden;
+    background:radial-gradient(120% 90% at 50% 12%, #40342a 0%, #241b12 46%, #140d07 100%)}
+  /* 상단 미세 노이즈/비네트 */
+  .poster::after{content:"";position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 0 0 260px rgba(0,0,0,.55)}
+
+  /* 브랜드 헤더 */
+  .brand{position:absolute;top:64px;left:0;right:0;text-align:center;z-index:3}
+  .brand .k{font-size:20px;font-weight:600;letter-spacing:.4em;color:var(--teal);
+    text-indent:.4em}
+  .brand .n{margin-top:12px;font-size:26px;font-weight:700;color:var(--cream);
+    letter-spacing:-.01em}
+
+  /* 히어로 드링크 (포스터의 50%+ 비주얼) */
+  .hero{position:absolute;left:50%;top:436px;transform:translateX(-50%);
+    width:500px;height:610px;z-index:1;display:flex;justify-content:center}
+  .hero img{width:auto;height:100%;filter:drop-shadow(0 30px 50px rgba(0,0,0,.55))}
+
+  /* 헤드라인 (빅 타이포 + 강조색) */
+  .copy{position:absolute;top:150px;left:0;right:0;text-align:center;z-index:2}
+  .copy .big{font-size:150px;font-weight:700;color:var(--cream);letter-spacing:-.03em;
+    line-height:1;text-shadow:0 6px 40px rgba(0,0,0,.5)}
+  .copy .big em{font-style:normal;color:var(--teal)}
+
+  /* 하단 신메뉴 정보 */
+  .menu{position:absolute;left:0;right:0;bottom:118px;text-align:center;z-index:3}
+  .menu .season{display:inline-block;border:1px solid rgba(47,168,148,.55);
+    color:var(--teal);font-size:20px;font-weight:700;letter-spacing:.16em;
+    padding:9px 22px;border-radius:999px;background:rgba(47,168,148,.08)}
+  .menu .name{margin-top:22px;font-size:58px;font-weight:700;color:var(--cream);
+    letter-spacing:-.02em}
+  .menu .desc{margin-top:14px;font-size:24px;font-weight:500;color:var(--sub);
+    letter-spacing:-.01em}
+  .menu .price{margin-top:20px;font-size:40px;font-weight:800;color:var(--cream);
+    letter-spacing:-.01em}
+  .menu .price small{font-size:24px;font-weight:600;color:var(--sub);margin-left:6px}
+
+  /* 푸터 */
+  .foot{position:absolute;bottom:52px;left:0;right:0;text-align:center;z-index:3;
+    font-size:19px;font-weight:600;letter-spacing:.1em;color:var(--teal)}
+</style>
+
+<div class="poster">
+  <div class="brand">
+    <div class="k">SUMMER SIGNATURE</div>
+    <div class="n serif">하버스카페 · HARBORS CAFE</div>
+  </div>
+
+  <!-- 메인 카피 (3~7단어) -->
+  <div class="copy">
+    <div class="big serif">여름엔,<br><em>흑임자.</em></div>
+  </div>
+
+  <!-- 히어로 비주얼 -->
+  <div class="hero">
+    <img src="생성이미지/drink_흑임자콜드브루.svg" alt="흑임자 크림 콜드브루">
+  </div>
+
+  <!-- 신메뉴 정보 -->
+  <div class="menu">
+    <span class="season">여름 시즌 한정</span>
+    <div class="name serif">흑임자 크림 콜드브루</div>
+    <div class="desc">진한 콜드브루 위에, 고소한 흑임자 크림 한 겹</div>
+    <div class="price">6,500<small>원</small></div>
+  </div>
+
+  <div class="foot">@harbors.cafe · 성수동 골목</div>
+</div>
