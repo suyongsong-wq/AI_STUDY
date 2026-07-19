@@ -7,65 +7,100 @@
   html,body{width:1063px;height:638px;overflow:hidden;
     font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
   :root{
-    --blue:#3182F6; --blue-d:#1B64DA;
+    --blue:#3182F6; --blue-d:#1B64DA; --blue-dd:#0F4FBF;
     --g900:#191F28; --g700:#4E5968; --g500:#8B95A1; --g200:#E5E8EB; --g50:#F9FAFB;
   }
   .mono{font-family:"JetBrains Mono",monospace}
+  .card{position:relative;width:1063px;height:638px;overflow:hidden}
 
-  .card{position:relative;width:1063px;height:638px;background:#fff;overflow:hidden}
+  /* ── 앞면 : 풀컬러 블루 ── */
+  .front{background:linear-gradient(140deg,#3B8BFF 0%,#3182F6 44%,#1B64DA 100%);color:#fff;
+    display:flex}
+  .front .blob{position:absolute;border-radius:50%;pointer-events:none}
+  .b1{width:560px;height:560px;right:-200px;top:-230px;background:rgba(255,255,255,.11)}
+  .b2{width:280px;height:280px;left:-120px;bottom:-150px;background:rgba(255,255,255,.08)}
 
-  /* ── 앞면 ── */
-  .front{padding:64px 72px;display:flex;flex-direction:column}
-  .front .edge{position:absolute;left:0;top:0;bottom:0;width:12px;
-    background:linear-gradient(180deg,#3182F6,#1B64DA)}
-  .chip{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;
-    background:var(--g50);border:1px solid var(--g200);border-radius:999px;
-    padding:9px 18px;font-size:20px;font-weight:700;color:var(--blue);letter-spacing:.02em}
-  .name{margin-top:auto;font-size:96px;font-weight:800;color:var(--g900);
-    letter-spacing:-.045em;line-height:1;display:flex;align-items:baseline;gap:18px}
-  .name small{font-size:32px;font-weight:500;color:var(--g500);letter-spacing:0}
-  .role{margin-top:20px;font-size:33px;font-weight:700;color:var(--g900);letter-spacing:-.03em}
-  .role em{font-style:normal;color:var(--blue);
-    box-shadow:inset 0 -12px 0 rgba(49,130,246,.14)}
+  /* 좌측: 정보 / 우측: 대형 모노그램으로 균형 */
+  .fmain{flex:1;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between;
+    position:relative;z-index:1}
+  .frow1{display:flex;align-items:center;justify-content:space-between}
+  .chip{display:inline-flex;align-items:center;gap:9px;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.34);
+    backdrop-filter:blur(12px);border-radius:999px;padding:9px 18px;
+    font-size:19px;font-weight:700;color:#fff}
+  .tagr{font-size:15px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,.7)}
 
-  .contact{margin-top:auto;display:flex;gap:56px;padding-top:34px;border-top:1px solid var(--g200)}
-  .ci .lb{font-size:16px;font-weight:700;color:var(--g500);letter-spacing:.12em}
-  .ci .vl{margin-top:8px;font-size:25px;font-weight:600;color:var(--g900);letter-spacing:-.01em}
+  .fhero .name{font-size:100px;font-weight:800;letter-spacing:-.045em;line-height:1;
+    display:flex;align-items:baseline;gap:18px}
+  .fhero .name small{font-size:30px;font-weight:500;color:rgba(255,255,255,.72)}
+  .fhero .role{margin-top:18px;font-size:32px;font-weight:700;letter-spacing:-.03em}
+  .fhero .role em{font-style:normal;box-shadow:inset 0 -13px 0 rgba(255,255,255,.28)}
 
-  /* ── 뒷면 ── */
-  .back{background:var(--g900);padding:64px 72px;display:flex;flex-direction:column;
+  .contact{display:flex;gap:44px}
+  .ci .lb{font-size:15px;font-weight:700;color:rgba(255,255,255,.72);letter-spacing:.12em}
+  .ci .vl{margin-top:7px;font-size:21px;font-weight:600;color:#fff;letter-spacing:-.02em;
+    white-space:nowrap}
+
+  /* 우측 대형 모노그램 패널 */
+  .fside{width:224px;flex:none;position:relative;z-index:1;
+    border-left:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
+  .fside .mg{font-size:230px;font-weight:800;letter-spacing:-.05em;color:rgba(255,255,255,.16);
+    line-height:.8}
+  .fside .vt{position:absolute;bottom:44px;font-family:"JetBrains Mono",monospace;font-size:15px;
+    letter-spacing:.24em;color:rgba(255,255,255,.65)}
+
+  /* ── 뒷면 : 화이트 반전 ── */
+  .back{background:#fff;padding:52px 60px;display:flex;flex-direction:column;
     justify-content:space-between}
-  .back .btop{}
-  .back .bk{font-size:20px;font-weight:700;color:var(--blue);letter-spacing:.14em}
-  .back .bstmt{margin-top:24px;font-size:52px;font-weight:800;color:#fff;
-    letter-spacing:-.035em;line-height:1.28}
+  .back .bk{font-size:19px;font-weight:700;color:var(--blue);letter-spacing:.14em}
+  .back .bstmt{margin-top:18px;font-size:46px;font-weight:800;color:var(--g900);
+    letter-spacing:-.035em;line-height:1.24}
   .back .bstmt em{font-style:normal;color:var(--blue)}
-  .back .bbot{display:flex;align-items:flex-end;justify-content:space-between;gap:30px}
-  .back .binfo .bl{font-size:16px;font-weight:700;color:var(--g500);letter-spacing:.12em}
-  .back .binfo .bv{margin-top:9px;font-size:26px;font-weight:600;color:#fff;letter-spacing:-.01em}
-  .back .binfo .bv2{margin-top:6px;font-size:22px;font-weight:500;color:var(--g500)}
-  .back .qr{width:150px;height:150px;flex:none;border-radius:14px;overflow:hidden;
-    background:#fff;padding:10px}
+  .back .chips{display:flex;flex-wrap:wrap;gap:11px}
+  .back .chips .c{background:var(--g50);border:1px solid var(--g200);border-radius:10px;
+    padding:11px 18px;font-size:22px;font-weight:600;color:var(--g700);letter-spacing:-.01em}
+  .back .bbot{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;
+    padding-top:26px;border-top:1px solid var(--g200)}
+  .back .binfo .bl{font-size:15px;font-weight:700;color:var(--g500);letter-spacing:.12em}
+  .back .binfo .bv{margin-top:8px;font-size:25px;font-weight:600;color:var(--g900);letter-spacing:-.01em}
+  .back .binfo .bv2{margin-top:6px;font-size:20px;font-weight:500;color:var(--g500)}
+  .back .qr{width:138px;height:138px;flex:none;border-radius:12px;overflow:hidden;
+    background:#fff;border:1px solid var(--g200)}
   .back .qr img{width:100%;height:100%;display:block}
 </style>
 
-<!-- ══ 앞면 ══ -->
+<!-- ══ 앞면 (풀컬러 블루) ══ -->
 <div class="card front" id="front">
-  <div class="edge"></div>
-  <div class="chip">🏭 AI 공장장 부트캠프 3기</div>
-  <div class="name">송수용<small>suyong</small></div>
-  <div class="role">만들면서 배우는 <em>실용주의 빌더</em></div>
-  <div class="contact">
-    <div class="ci"><div class="lb">EMAIL</div><div class="vl mono">suyong.song@griff.co.kr</div></div>
-    <div class="ci"><div class="lb">GITHUB</div><div class="vl mono">github.com/suyongsong-wq</div></div>
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="fmain">
+    <div class="frow1">
+      <div class="chip">🏭 AI 공장장 부트캠프 3기</div>
+      <div class="tagr">SEOUL · 2026</div>
+    </div>
+    <div class="fhero">
+      <div class="name">송수용<small>suyong</small></div>
+      <div class="role">만들면서 배우는 <em>실용주의 빌더</em></div>
+    </div>
+    <div class="contact">
+      <div class="ci"><div class="lb">EMAIL</div><div class="vl mono">suyong.song@griff.co.kr</div></div>
+      <div class="ci"><div class="lb">GITHUB</div><div class="vl mono">github.com/suyongsong-wq</div></div>
+    </div>
+  </div>
+  <div class="fside">
+    <div class="mg">S</div>
+    <div class="vt">AI BUILDER</div>
   </div>
 </div>
 
-<!-- ══ 뒷면 ══ -->
+<!-- ══ 뒷면 (화이트 반전) ══ -->
 <div class="card back" id="back">
   <div class="btop">
     <div class="bk">HOW I WORK</div>
     <div class="bstmt">개념만 듣지 않습니다.<br><em>작동하는 걸</em> 손으로 만듭니다.</div>
+  </div>
+  <div class="chips">
+    <span class="c">작게 만들고 확인</span><span class="c">꼼꼼함</span>
+    <span class="c">정리정돈</span><span class="c">깔끔한 UI</span>
   </div>
   <div class="bbot">
     <div class="binfo">
