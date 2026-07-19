@@ -1,0 +1,64 @@
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1920px;overflow:hidden;
+    font-family:Pretendard,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  :root{--blue:#3182F6;--blue-d:#1B64DA;--g900:#191F28}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  .story{width:1080px;height:1920px;position:relative;overflow:hidden;color:#fff;
+    background:linear-gradient(150deg,#3B8BFF 0%,#3182F6 46%,#1B64DA 100%);
+    padding:96px 80px 88px;display:flex;flex-direction:column}
+  .blob{position:absolute;border-radius:50%;pointer-events:none}
+  .b1{width:640px;height:640px;right:-220px;top:-240px;background:rgba(255,255,255,.10)}
+  .b2{width:420px;height:420px;left:-180px;bottom:80px;background:rgba(255,255,255,.07)}
+  .z{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
+
+  .acct{display:flex;align-items:center;gap:16px}
+  .acct .av{width:64px;height:64px;border-radius:50%;background:#fff;color:var(--blue);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;flex:none}
+  .acct .nm{font-size:26px;font-weight:700;color:#fff}
+  .acct .nm span{color:rgba(255,255,255,.7);font-weight:500;font-size:20px}
+  .acct .t{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:18px;color:rgba(255,255,255,.7)}
+
+  .kick{margin-top:48px;font-family:"JetBrains Mono",monospace;font-size:22px;letter-spacing:.24em;
+    text-transform:uppercase;color:rgba(255,255,255,.82);font-weight:600;text-align:center}
+  .head{margin-top:14px;font-size:58px;font-weight:800;letter-spacing:-.035em;color:#fff;text-align:center}
+
+  .cards{flex:1;min-height:0;margin-top:50px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:40px}
+  .cards img{width:900px;border-radius:22px;box-shadow:0 30px 60px rgba(15,50,120,.4);display:block}
+
+  .cap{margin-top:44px;text-align:center;font-size:34px;font-weight:700;letter-spacing:-.02em;color:#fff}
+  .cap em{font-style:normal;box-shadow:inset 0 -13px 0 rgba(255,255,255,.28)}
+  .foot{margin-top:28px;display:flex;justify-content:space-between;align-items:center}
+  .foot .b{font-size:26px;font-weight:700;color:#fff}
+  .foot .h{font-family:"JetBrains Mono",monospace;font-size:19px;color:rgba(255,255,255,.72);letter-spacing:-.01em}
+</style>
+
+<div class="story">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="z">
+    <div class="acct">
+      <div class="av">S</div>
+      <div class="nm">griff_suyong <span>· 송수용</span></div>
+      <div class="t">now</div>
+    </div>
+
+    <div class="kick">Business Card · 내 명함</div>
+    <div class="head">만들면서 배우는 빌더 ✦</div>
+
+    <div class="cards">
+      <img src="../명함_앞면_1063x638.png" alt="명함 앞면">
+      <img src="../명함_뒷면_1063x638.png" alt="명함 뒷면">
+    </div>
+
+    <div class="cap">개념만 듣지 않습니다. <em>작동하는 걸</em> 손으로 만듭니다.</div>
+    <div class="foot">
+      <div class="b">송수용 · suyong</div>
+      <div class="h">github.com/suyongsong-wq</div>
+    </div>
+  </div>
+</div>
