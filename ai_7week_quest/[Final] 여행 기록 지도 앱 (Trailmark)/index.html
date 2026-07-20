@@ -958,6 +958,7 @@
       const [addMode, setAddMode] = useState(false);
       const [showRoute, setShowRoute] = useState(false);
       const [sharePanel, setSharePanel] = useState(false);
+      const [compactHead, setCompactHead] = useState(false);   // 모바일: 상단 접기 (친구 피드백)
       const [pending, setPending] = useState(null);
       const [editing, setEditing] = useState(null);      // 다이어리 수정 대상 place
       const [loading, setLoading] = useState(true);
@@ -1426,6 +1427,8 @@
               <p className="text-[11px] text-[#9aa2b5] mt-2 truncate">{session.user.email}</p>
             </div>
 
+            {/* 접힘(모바일): 통계~버튼을 숨겨 트래블로그를 길게 — 친구 피드백 반영 */}
+            <div className={compactHead ? "hidden md:block" : ""}>
             {/* 통계 — 스탬프 타일 */}
             <div className="mx-4 mb-3 stamp py-3.5 flex">
               <Stat label="방문 국가" value={stats.countries} />
@@ -1486,10 +1489,28 @@
               </div>
             </div>
 
+            </div>
+
+            {/* 접힘 상태의 요약 줄 (모바일 전용) */}
+            {compactHead && (
+              <div className="md:hidden mx-4 mb-2 flex items-center gap-2 bg-white rounded-xl border border-[#e7eaf3] px-3 py-2">
+                <span className="display text-[13px] font-bold text-[#101527]">{stats.countries}개국 · {stats.cities}도시</span>
+                <span className="mono-tag text-[10px] text-[#9aa2b5]">{stats.world}%</span>
+                {!readOnly && (
+                  <button onClick={()=>setAddMode(!addMode)}
+                    className="ml-auto btn-p py-1.5 px-3 text-[12px] rounded-lg">＋ 추가</button>
+                )}
+              </div>
+            )}
+
             <div className="px-5 pb-2 flex items-center gap-2">
               <span className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest">Travel Log</span>
               <span className="mono-tag text-[10px] text-[#b6bdcd]">{places.length}</span>
               <div className="flex-1 h-px bg-[#e7eaf3]" />
+              <button onClick={()=>setCompactHead(!compactHead)}
+                className="md:hidden mono-tag text-[10px] text-[#8b93a7] border border-[#e0e5f0] rounded-full px-2.5 py-1">
+                {compactHead ? "▼ 펼치기" : "▲ 접기"}
+              </button>
             </div>
 
             <div className="md:flex-1 md:min-h-0 md:overflow-y-auto card-scroll px-4 pb-5 space-y-3.5">
