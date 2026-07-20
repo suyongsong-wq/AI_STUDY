@@ -148,6 +148,9 @@
     .btn-ghost { background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;
       font-weight:600; border-radius:12px; padding:11px 16px; font-size:14px; transition:background .2s; }
     .btn-ghost:hover { background:rgba(255,255,255,.28); }
+
+    /* 모바일: iOS가 입력 포커스 시 확대되지 않도록 16px 보장 */
+    @media (max-width:767px) { .inp { font-size:16px; } }
   </style>
 </head>
 <body class="bg-[#0B1020]">
@@ -807,13 +810,13 @@
 
       const total = groups.reduce((s,g)=>s+g.items.length, 0);
       return (
-        <div className="glass-strong rounded-2xl shadow-lg w-[240px] overflow-hidden">
+        <div className="glass-strong rounded-2xl shadow-lg w-[210px] md:w-[240px] overflow-hidden">
           <div className="px-3.5 pt-3 pb-2 flex items-center gap-1.5">
             <span className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest">Route</span>
             <span className="mono-tag text-[10px] text-[#b6bdcd]">{total}</span>
             {canEdit && <span className="ml-auto text-[9.5px] text-[#b6bdcd]">그룹 안에서 드래그</span>}
           </div>
-          <div className="max-h-[46vh] overflow-y-auto card-scroll pb-2">
+          <div className="max-h-[30vh] md:max-h-[46vh] overflow-y-auto card-scroll pb-2">
             {groups.map((grp, g) => (
               <div key={grp.key}>
                 {/* 여행 섹션 헤더 */}
@@ -839,7 +842,7 @@
                       {p.visited_at && <div className="mono-tag text-[9px] text-[#9aa2b5]">{p.visited_at}</div>}
                     </button>
                     {canEdit && (
-                      <span className="hidden group-hover:flex flex-col flex-shrink-0">
+                      <span className="flex md:hidden md:group-hover:flex flex-col flex-shrink-0">
                         <button onClick={() => move(g, i,-1)} className="text-[9px] leading-[9px] text-[#9aa2b5] hover:text-[#4F46E5]">▲</button>
                         <button onClick={() => move(g, i, 1)} className="text-[9px] leading-[9px] text-[#9aa2b5] hover:text-[#4F46E5]">▼</button>
                       </span>
@@ -1405,8 +1408,8 @@
       const selEntry = selPlace?.tm_diary_entries?.[0];
 
       return (
-        <div className="h-screen w-screen flex flex-col md:flex-row overflow-hidden">
-          <aside className="panel w-full md:w-[390px] flex-shrink-0 h-[45vh] md:h-full flex flex-col border-r border-[#e7eaf3]">
+        <div className="h-screen w-screen flex flex-col-reverse md:flex-row overflow-hidden">
+          <aside className="panel w-full md:w-[390px] flex-shrink-0 h-[45vh] md:h-full flex flex-col overflow-y-auto md:overflow-hidden border-t md:border-t-0 md:border-r border-[#e7eaf3]">
             {/* 헤더 — 로고 배지에만 그라데이션 */}
             <div className="px-5 pt-5 pb-3">
               <div className="flex items-center gap-2.5">
@@ -1489,7 +1492,7 @@
               <div className="flex-1 h-px bg-[#e7eaf3]" />
             </div>
 
-            <div className="flex-1 overflow-y-auto card-scroll px-4 pb-5 space-y-3.5">
+            <div className="md:flex-1 md:min-h-0 md:overflow-y-auto card-scroll px-4 pb-5 space-y-3.5">
               {loading && <div className="text-sm text-[#9aa2b5] text-center py-8">불러오는 중…</div>}
               {!loading && loadErr &&
                 <div className="text-center py-3 text-[12px] text-[#e11d48]">
@@ -1512,7 +1515,7 @@
                       </span>
                       <span className="mono-tag text-[9.5px] text-[#b6bdcd]">{g.items.length}</span>
                       {g.trip && g.trip.user_id === myId && (
-                        <span className="hidden group-hover/th:inline-flex gap-1.5">
+                        <span className="inline-flex md:hidden md:group-hover/th:inline-flex gap-1.5">
                           <button onClick={()=>renameTrip(g.trip)} title="이름 변경"
                             className="text-[10px] text-[#9aa2b5] hover:text-[#4F46E5]">✎</button>
                           <button onClick={()=>deleteTrip(g.trip)} title="여행 삭제"
@@ -1576,7 +1579,7 @@
             )}
 
             {/* 범례 */}
-            <div className="absolute top-3 right-3 z-[500] glass-strong px-3 py-2.5 rounded-2xl shadow-lg text-[11px] text-[#3b4256] space-y-1.5">
+            <div className="absolute top-[62px] md:top-3 right-3 z-[500] glass-strong px-3 py-2.5 rounded-2xl shadow-lg text-[11px] text-[#3b4256] space-y-1.5">
               {scope === "all" ? (<>
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#4F46E5"}}></span>
