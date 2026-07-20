@@ -4,7 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trailmark — 여행 기록 지도</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>" />
+  <meta name="description" content="세계 지도를 스크래치 맵처럼 긁으며 여행의 기억을 남기는 나만의 트래블 패스포트. 도시별 다이어리·사진, 가족·친구와 지도 공유, 여행별 경로까지." />
+  <meta name="theme-color" content="#140F2E" />
+
+  <!-- 파비콘 · 앱 아이콘 -->
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+
+  <!-- 링크 미리보기 (OG / 트위터 카드) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Trailmark" />
+  <meta property="og:title" content="Trailmark — 여행 기록 지도" />
+  <meta property="og:description" content="세계 지도를 긁으며 여행의 기억을 남기다. 도시별 다이어리·사진·공유·여행 경로." />
+  <meta property="og:url" content="https://trailmark.co.kr" />
+  <meta property="og:image" content="https://trailmark.co.kr/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Trailmark — 여행 기록 지도" />
+  <meta name="twitter:description" content="세계 지도를 긁으며 여행의 기억을 남기다." />
+  <meta name="twitter:image" content="https://trailmark.co.kr/og.png" />
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -52,15 +71,35 @@
     .ctry-label::before { display:none; }
     .leaflet-tooltip.ctry-label { white-space:nowrap; }
 
-    #map.scratch .ctry-hover { filter:drop-shadow(0 0 8px rgba(94,234,212,.9)); }
-    #map.real    .ctry-hover { filter:drop-shadow(0 0 6px rgba(79,70,229,.65)); }
+    /* hover 글로우 — 대륙 컬러와 안 겹치는 화이트/잉크 톤 */
+    #map.scratch .ctry-hover { filter:drop-shadow(0 0 8px rgba(255,255,255,.8)); }
+    #map.real    .ctry-hover { filter:drop-shadow(0 0 6px rgba(16,21,39,.5)); }
     #map.adding  { cursor:crosshair; }
+
+    /* 경로 경유지 순번 배지 (핀 위에 겹치지 않게 위로 살짝) */
+    .rnum { width:18px; height:18px; border-radius:50%; background:#4F46E5; color:#fff;
+      display:flex; align-items:center; justify-content:center;
+      font-family:'Outfit',sans-serif; font-size:10px; font-weight:700;
+      border:2px solid #fff; box-shadow:0 2px 6px rgba(11,16,32,.35); }
+
+    /* 경로 패널 드래그 */
+    .rstop { transition:background .15s; }
+    .rstop.dragging { opacity:.4; }
+    .rstop.dragover { box-shadow:inset 0 2.5px 0 #4F46E5; }
+
+    /* 방문지 저장 직후 '긁어내는' 리빌 — 좌상단→우하단 대각선 와이프 + 화이트 광택 */
+    @keyframes scratchReveal {
+      0%   { clip-path:polygon(-30% -30%, 25% -30%, -30% 25%); filter:drop-shadow(0 0 14px rgba(255,255,255,.95)); }
+      70%  { filter:drop-shadow(0 0 10px rgba(255,255,255,.7)); }
+      100% { clip-path:polygon(-30% -30%, 330% -30%, -30% 330%); filter:none; }
+    }
+    #map .ctry-scratched { animation:scratchReveal 1.1s cubic-bezier(.25,.7,.3,1) both; }
 
     /* 클릭 시 브라우저 기본 포커스 링(사각형) 제거 —
        Leaflet이 path에 tabindex를 붙여 바운딩 박스에 네모가 그려지는 문제 */
     #map .leaflet-interactive:focus { outline:none; }
     /* 키보드 탐색(Tab)일 때만, 사각형 대신 국경선을 따라 강조 */
-    #map .leaflet-interactive:focus-visible { outline:none; stroke:#5EEAD4; stroke-width:2.5px; }
+    #map .leaflet-interactive:focus-visible { outline:none; stroke:#ffffff; stroke-width:2.5px; }
     .leaflet-container:focus, .leaflet-container:focus-visible { outline:none; }
 
     .leaflet-popup-content { margin:10px 14px; font-family:inherit; }
@@ -123,6 +162,78 @@
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const GEO_URL = "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json";
+
+    // 구글 평점 기능 표시 여부 — GOOGLE_PLACES_KEY 연결 전까지 숨김 (구조·캐시는 유지)
+    const SHOW_RATINGS = false;
+    // 소셜 로그인 버튼 — Supabase 대시보드에 구글/카카오 client ID·secret 등록 후 true로
+    const SHOW_SOCIAL = false;
+
+    // 여행 그룹 색 (경로 라인·순번 배지·섹션 도트)
+    const TRIP_COLORS = ["#38BDF8","#A78BFA","#F472B6","#34D399","#FB923C","#F87171","#818CF8","#2DD4BF"];
+
+    // 인스타 게시글 URL → 임베드 주소 (공개 게시글/릴스만, API 불필요)
+    const instaEmbed = (url) => {
+      const m = String(url || "").match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/);
+      return m ? `https://www.instagram.com/${m[1]}/${m[2]}/embed` : null;
+    };
+
+    // ── 태평양 중심 지도 ──
+    // 표준 지도는 경도 ±180에서 끊겨 한국 중심 뷰에서 아메리카 쪽 벡터가 사라진다.
+    // 대서양(-30°)에서 지도를 자르고, 그보다 서쪽 조각(아메리카·그린란드)은 +360 이동.
+    const PACIFIC_CUT = -30;
+    const dispLng = (l) => l < PACIFIC_CUT ? l + 360 : l;           // 저장 좌표(-180~180) → 표시 좌표
+    const normLng = (l) => ((l + 540) % 360) - 180;                  // 표시 좌표 → 저장 좌표
+
+    // GeoJSON을 태평양 중심 좌표계로 변환 (폴리곤 조각 단위로 이동 → 나라가 찢기지 않음)
+    function pacifyGeo(geo) {
+      const shiftRing = (ring) => {
+        let xs = ring.map(c => c[0]);
+        // ① 링 자체가 날짜변경선을 걸치면(러시아·알래스카) 먼저 이어붙임
+        if (Math.max(...xs) - Math.min(...xs) > 180) {
+          ring = ring.map(([x, y]) => [x < 0 ? x + 360 : x, y]);
+          xs = ring.map(c => c[0]);
+        }
+        // ② 조각의 중심이 컷 라인 서쪽이면 통째로 +360 (아메리카를 오른쪽으로)
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        if (cx < PACIFIC_CUT) ring = ring.map(([x, y]) => [x + 360, y]);
+        return ring;
+      };
+      // 남극은 극지방을 감싸는 링이라 변환 시 찢어짐 + 여행 대상도 아님 → 제외
+      geo.features = geo.features.filter(f => f.properties.name !== "Antarctica");
+      geo.features.forEach(f => {
+        const g = f.geometry;
+        if (g.type === "Polygon") g.coordinates = g.coordinates.map(shiftRing);
+        else if (g.type === "MultiPolygon") g.coordinates = g.coordinates.map(rings => rings.map(shiftRing));
+      });
+      return geo;
+    }
+
+    // 국가명 라벨 위치: 가장 큰 본토 조각의 bbox 중심.
+    // 멀티폴리곤(러시아·미국 등)은 Leaflet 기본 중심이 구석/타국으로 밀리고,
+    // 날짜변경선(±180°)을 걸치면 중심이 반대편으로 튐 → 경도 +360 정규화 후 계산.
+    function countryLabelPoint(f) {
+      try {
+        const g = f.geometry;
+        const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+        let best = null, bestArea = 0;
+        polys.forEach(rings => {
+          const ring = rings[0];                              // 외곽 링만
+          let xs = ring.map(c => c[0]);
+          const minX0 = Math.min(...xs), maxX0 = Math.max(...xs);
+          if (maxX0 - minX0 > 180) xs = xs.map(x => x < 0 ? x + 360 : x);   // 날짜변경선 보정
+          const ys = ring.map(c => c[1]);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          const area = (maxX - minX) * (maxY - minY);
+          if (area > bestArea) {
+            bestArea = area;
+            // 태평양 중심 좌표계라 lng > 180 그대로 사용 (Leaflet은 범위 밖 경도 허용)
+            best = L.latLng((minY + maxY) / 2, (minX + maxX) / 2);
+          }
+        });
+        return best;
+      } catch { return null; }
+    }
 
     // ISO3 → [한글명, 국기, 대륙]  (없으면 영문명 + 🌍 + 기타)
     const META = {
@@ -250,6 +361,26 @@
                 className="w-full text-xs text-[#5b6478] hover:text-[#101527]">
                 {signup ? "이미 계정이 있어요 → 로그인" : "처음이신가요? → 회원가입"}
               </button>
+
+              {/* 소셜 로그인 — Supabase에 provider 등록 후 SHOW_SOCIAL=true */}
+              {SHOW_SOCIAL && (<>
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex-1 h-px bg-[#e7eaf3]" />
+                  <span className="text-[10px] text-[#9aa2b5]">또는</span>
+                  <div className="flex-1 h-px bg-[#e7eaf3]" />
+                </div>
+                <button type="button"
+                  onClick={()=>sb.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: location.origin + location.pathname } })}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold border border-[#e0e5f0] bg-white text-[#3b4256] hover:bg-[#f4f6fb] transition">
+                  <span className="font-bold" style={{color:"#4285F4"}}>G</span> Google로 계속하기
+                </button>
+                <button type="button"
+                  onClick={()=>sb.auth.signInWithOAuth({ provider:"kakao", options:{ redirectTo: location.origin + location.pathname } })}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition"
+                  style={{background:"#FEE500", color:"#191919"}}>
+                  💬 카카오로 계속하기
+                </button>
+              </>)}
             </form>
           </div>
         </div>
@@ -257,14 +388,18 @@
     }
 
     // ─────────────────────────── 방문지 추가 모달 ───────────────────────────
-    function AddModal({ pending, onClose, onSaved }) {
+    function AddModal({ pending, trips, onClose, onSaved }) {
       const [q, setQ] = useState("");                 // 도시 검색어 (자연어)
       const [results, setResults] = useState([]);
       const [city, setCity] = useState(null);         // 선택된 도시(좌표 포함)
       const [searching, setSearching] = useState(false);
       const [date, setDate] = useState("");
+      // 기본값 = 가장 최근 여행 (한 여행의 도시들을 연속으로 추가하는 흐름)
+      const [tripSel, setTripSel] = useState(trips[0]?.id || "");   // ""=여행 없음 | trip id | "__new"
+      const [newTrip, setNewTrip] = useState("");
       const [title, setTitle] = useState("");
       const [body, setBody] = useState("");
+      const [insta, setInsta] = useState("");
       const [file, setFile] = useState(null);
       const [busy, setBusy] = useState(false);
       const [err, setErr] = useState("");
@@ -290,9 +425,21 @@
           const lng = city ? city.lng : pending.lng;
           if (city) rememberCity(city);           // 도시 DB에 축적
 
+          // 여행 그룹: 새 여행이면 먼저 생성 (색은 순번대로 자동 배정)
+          let trip_id = tripSel && tripSel !== "__new" ? tripSel : null;
+          if (tripSel === "__new") {
+            if (!newTrip.trim()) throw new Error("새 여행의 이름을 입력해주세요.");
+            const { data: trip, error: eT } = await sb.from("tm_trips").insert({
+              title: newTrip.trim(), color: TRIP_COLORS[trips.length % TRIP_COLORS.length],
+              started_at: date || null,
+            }).select().single();
+            if (eT) throw eT;
+            trip_id = trip.id;
+          }
+
           const { data: place, error: e1 } = await sb.from("tm_places").insert({
             country: pending.country, country_ko: ko, city: cityName, flag, continent,
-            lat, lng, visited_at: date || null,
+            lat, lng, visited_at: date || null, trip_id,
           }).select().single();
           if (e1) throw e1;
 
@@ -307,7 +454,8 @@
               photo_url = sb.storage.from("trip-photos").getPublicUrl(path).data.publicUrl;
             }
             const { error: e3 } = await sb.from("tm_diary_entries")
-              .insert({ place_id: place.id, title: title.trim() || cityName, body, photo_url });
+              .insert({ place_id: place.id, title: title.trim() || cityName, body, photo_url,
+                        insta_url: insta.trim() || null });
             if (e3) throw e3;
           }
           onSaved();
@@ -369,11 +517,24 @@
                 <label className="text-xs font-semibold text-[#5b6478]">방문일</label>
                 <input className="inp mt-1" type="date" value={date} onChange={e=>setDate(e.target.value)} />
               </div>
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">여행 그룹 <span className="font-normal text-[#9aa2b5]">— 한 여행의 도시들을 묶어요</span></label>
+                <select className="inp mt-1" value={tripSel} onChange={e=>setTripSel(e.target.value)}>
+                  <option value="">여행 없음</option>
+                  {trips.map(t => <option key={t.id} value={t.id}>🧳 {t.title}</option>)}
+                  <option value="__new">➕ 새 여행 만들기</option>
+                </select>
+                {tripSel === "__new" &&
+                  <input className="inp mt-2" value={newTrip} onChange={e=>setNewTrip(e.target.value)}
+                    placeholder='여행 이름 — 예) "2026 유럽 여행"' autoFocus />}
+              </div>
               <div className="pt-1 border-t border-[#e7eaf3]">
                 <label className="text-xs font-semibold text-[#5b6478]">여행 다이어리 (선택)</label>
                 <input className="inp mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" />
                 <textarea className="inp mt-2" rows="3" value={body} onChange={e=>setBody(e.target.value)} placeholder="그날의 기억을 남겨보세요" />
                 <input className="inp mt-2 text-xs" type="file" accept="image/*" onChange={e=>setFile(e.target.files[0])} />
+                <input className="inp mt-2" value={insta} onChange={e=>setInsta(e.target.value)}
+                  placeholder="인스타 게시글 링크 (선택)" />
               </div>
               {err && <div className="text-xs text-[#e11d48]">{err}</div>}
               <div className="flex gap-2 pt-1">
@@ -388,11 +549,14 @@
 
     // ─────────────────────────── 다이어리 수정/추가 모달 ───────────────────────────
     // 방문지 추가 때 다이어리를 건너뛰었어도 나중에 쓰거나 고칠 수 있게
-    function EditModal({ place, onClose, onSaved }) {
+    function EditModal({ place, trips, onClose, onSaved }) {
       const entry = place.tm_diary_entries?.[0] || null;
       const [title, setTitle] = useState(entry?.title || "");
       const [body, setBody] = useState(entry?.body || "");
       const [date, setDate] = useState(place.visited_at || "");
+      const [tripSel, setTripSel] = useState(place.trip_id || "");
+      const [newTrip, setNewTrip] = useState("");
+      const [insta, setInsta] = useState(entry?.insta_url || "");
       const [file, setFile] = useState(null);
       const [busy, setBusy] = useState(false);
       const [err, setErr] = useState("");
@@ -400,9 +564,20 @@
       const save = async (e) => {
         e.preventDefault(); setBusy(true); setErr("");
         try {
-          // 방문일 변경 → 경로/정렬에 반영
+          // 여행 그룹: 새 여행이면 먼저 생성
+          let trip_id = tripSel && tripSel !== "__new" ? tripSel : null;
+          if (tripSel === "__new") {
+            if (!newTrip.trim()) throw new Error("새 여행의 이름을 입력해주세요.");
+            const { data: trip, error: eT } = await sb.from("tm_trips").insert({
+              title: newTrip.trim(), color: TRIP_COLORS[trips.length % TRIP_COLORS.length],
+              started_at: date || null,
+            }).select().single();
+            if (eT) throw eT;
+            trip_id = trip.id;
+          }
+          // 방문일·여행 변경 → 경로/정렬/그룹에 반영
           const { error: e0 } = await sb.from("tm_places")
-            .update({ visited_at: date || null }).eq("id", place.id);
+            .update({ visited_at: date || null, trip_id }).eq("id", place.id);
           if (e0) throw e0;
 
           if (entry || title.trim() || body.trim() || file) {
@@ -418,7 +593,7 @@
               if (old && decodeURIComponent(old) !== path)
                 sb.storage.from("trip-photos").remove([decodeURIComponent(old)]);
             }
-            const row = { title: title.trim() || place.city, body, photo_url };
+            const row = { title: title.trim() || place.city, body, photo_url, insta_url: insta.trim() || null };
             const { error: e2 } = entry
               ? await sb.from("tm_diary_entries").update(row).eq("id", entry.id)
               : await sb.from("tm_diary_entries").insert({ place_id: place.id, ...row });
@@ -443,6 +618,17 @@
                 <input className="inp mt-1" type="date" value={date} onChange={e=>setDate(e.target.value)} />
               </div>
               <div>
+                <label className="text-xs font-semibold text-[#5b6478]">여행 그룹</label>
+                <select className="inp mt-1" value={tripSel} onChange={e=>setTripSel(e.target.value)}>
+                  <option value="">여행 없음</option>
+                  {trips.map(t => <option key={t.id} value={t.id}>🧳 {t.title}</option>)}
+                  <option value="__new">➕ 새 여행 만들기</option>
+                </select>
+                {tripSel === "__new" &&
+                  <input className="inp mt-2" value={newTrip} onChange={e=>setNewTrip(e.target.value)}
+                    placeholder='여행 이름 — 예) "2026 유럽 여행"' autoFocus />}
+              </div>
+              <div>
                 <label className="text-xs font-semibold text-[#5b6478]">제목</label>
                 <input className="inp mt-1" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" />
               </div>
@@ -453,6 +639,11 @@
               <div>
                 <label className="text-xs font-semibold text-[#5b6478]">사진 {entry?.photo_url && <span className="font-normal text-[#9aa2b5]">— 새로 고르면 교체됩니다</span>}</label>
                 <input className="inp mt-1 text-xs" type="file" accept="image/*" onChange={e=>setFile(e.target.files[0])} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#5b6478]">인스타 게시글 링크 <span className="font-normal text-[#9aa2b5]">— 공개 게시글이면 지도에서 바로 보여요</span></label>
+                <input className="inp mt-1" value={insta} onChange={e=>setInsta(e.target.value)}
+                  placeholder="https://www.instagram.com/p/…" />
               </div>
               {err && <div className="text-xs text-[#e11d48]">{err}</div>}
               <div className="flex gap-2 pt-1">
@@ -590,6 +781,78 @@
       );
     }
 
+    // ── 경로 패널: Travel Log처럼 여행 그룹별 섹션 · 그룹 안에서 드래그로 순서 편집 ──
+    function RoutePanel({ groups, canEdit, onReorder, onPick }) {
+      const [drag, setDrag] = useState(null);   // {g, i}
+      const [over, setOver] = useState(null);   // {g, i}
+
+      // 그룹 순서를 유지한 채 평탄화 → 전역 route_order 저장
+      const commit = (nextGroups) => onReorder(nextGroups.flatMap(g => g.items));
+
+      const drop = (g, i) => {
+        if (!drag || drag.g !== g || drag.i === i) { setDrag(null); setOver(null); return; }
+        const next = groups.map(x => ({ ...x, items:[...x.items] }));
+        const [moved] = next[g].items.splice(drag.i, 1);
+        next[g].items.splice(i, 0, moved);
+        setDrag(null); setOver(null);
+        commit(next);
+      };
+      const move = (g, i, dir) => {             // 모바일·키보드용 ↑↓ (그룹 안에서만)
+        const to = i + dir;
+        if (to < 0 || to >= groups[g].items.length) return;
+        const next = groups.map(x => ({ ...x, items:[...x.items] }));
+        [next[g].items[i], next[g].items[to]] = [next[g].items[to], next[g].items[i]];
+        commit(next);
+      };
+
+      const total = groups.reduce((s,g)=>s+g.items.length, 0);
+      return (
+        <div className="glass-strong rounded-2xl shadow-lg w-[240px] overflow-hidden">
+          <div className="px-3.5 pt-3 pb-2 flex items-center gap-1.5">
+            <span className="mono-tag text-[10px] font-semibold text-[#8b93a7] uppercase tracking-widest">Route</span>
+            <span className="mono-tag text-[10px] text-[#b6bdcd]">{total}</span>
+            {canEdit && <span className="ml-auto text-[9.5px] text-[#b6bdcd]">그룹 안에서 드래그</span>}
+          </div>
+          <div className="max-h-[46vh] overflow-y-auto card-scroll pb-2">
+            {groups.map((grp, g) => (
+              <div key={grp.key}>
+                {/* 여행 섹션 헤더 */}
+                <div className="flex items-center gap-1.5 px-3 pt-2 pb-1">
+                  <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{background:grp.color}}></span>
+                  <span className="text-[10.5px] font-bold text-[#5b6478] truncate">{grp.title}</span>
+                  <div className="flex-1 h-px bg-[#eef0f7]" />
+                </div>
+                {grp.items.map((p, i) => (
+                  <div key={p.id}
+                    draggable={canEdit}
+                    onDragStart={() => setDrag({g, i})}
+                    onDragOver={e => { e.preventDefault(); setOver({g, i}); }}
+                    onDragLeave={() => setOver(o => o && o.g===g && o.i===i ? null : o)}
+                    onDrop={() => drop(g, i)}
+                    onDragEnd={() => { setDrag(null); setOver(null); }}
+                    className={`rstop group flex items-center gap-2 px-3 py-1.5 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""} hover:bg-[#f4f6fb]
+                      ${drag && drag.g===g && drag.i===i ? "dragging" : ""}
+                      ${over && over.g===g && over.i===i && drag && drag.g===g && drag.i!==i ? "dragover" : ""}`}>
+                    <span className="rnum flex-shrink-0" style={{position:"static", background:grp.color}}>{i+1}</span>
+                    <button onClick={() => onPick(p.id)} className="flex-1 min-w-0 text-left">
+                      <div className="text-[12.5px] font-semibold text-[#101527] truncate">{p.flag} {p.city}</div>
+                      {p.visited_at && <div className="mono-tag text-[9px] text-[#9aa2b5]">{p.visited_at}</div>}
+                    </button>
+                    {canEdit && (
+                      <span className="hidden group-hover:flex flex-col flex-shrink-0">
+                        <button onClick={() => move(g, i,-1)} className="text-[9px] leading-[9px] text-[#9aa2b5] hover:text-[#4F46E5]">▲</button>
+                        <button onClick={() => move(g, i, 1)} className="text-[9px] leading-[9px] text-[#9aa2b5] hover:text-[#4F46E5]">▼</button>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     // ─────────────────────────── 공유 패널 ───────────────────────────
     function SharePanel({ shares, onChanged, onClose }) {
       const [email, setEmail] = useState("");
@@ -680,9 +943,11 @@
       const mapRef = useRef(null), tileRef = useRef(null), geoRef = useRef(null), markersRef = useRef({});
       const modeRef = useRef("scratch"), addRef = useRef(false), visitedRef = useRef(new Map());
       const routeRef = useRef(null);
+      const geoDataRef = useRef(null);                 // 스크린샷 렌더용 (태평양 좌표계 GeoJSON)
       const myId = session.user.id;
 
       const [allPlaces, setAllPlaces] = useState([]);   // 내 것 + 공유받은 것 (RLS가 걸러줌)
+      const [allTrips, setAllTrips] = useState([]);     // 여행 그룹 (내 것 + 공유받은 것)
       const [shares, setShares] = useState({ members:[], owners:[] });
       const [scope, setScope] = useState("mine");        // mine | all | <ownerId>
       const [selected, setSelected] = useState(null);
@@ -704,6 +969,9 @@
           .order("created_at", { referencedTable:"tm_diary_entries", ascending:false }); // 다이어리 여러 건이면 최신을 대표로
         if (error) setLoadErr(true);
         else { setAllPlaces(data || []); setLoadErr(false); }
+        const { data: trips } = await sb.from("tm_trips").select("*")
+          .order("started_at", { ascending:false, nullsFirst:false });
+        setAllTrips(trips || []);
         const { data: sh } = await sb.rpc("tm_share_list");
         setShares({
           members: (sh || []).filter(r => r.kind === "member"),
@@ -721,6 +989,39 @@
       }, [allPlaces, scope, myId]);
 
       const readOnly = scope !== "mine";   // 남의 지도/함께보기에선 추가 불가
+      const myTrips = useMemo(() => allTrips.filter(t => t.user_id === myId), [allTrips, myId]);
+      const tripById = useMemo(() => new Map(allTrips.map(t => [t.id, t])), [allTrips]);
+      const tripColor = (id) => tripById.get(id)?.color || "#4F46E5";
+
+      // 사이드바용: 여행별 섹션 (여행 없는 방문지는 '미분류')
+      // 방문지 0개인 내 여행도 섹션으로 노출 — 안 보이면 유령이 되고 관리도 불가능해짐
+      const tripGroups = useMemo(() => {
+        const byTrip = new Map();
+        places.forEach(p => {
+          const key = p.trip_id && tripById.has(p.trip_id) ? p.trip_id : "none";
+          if (!byTrip.has(key)) byTrip.set(key, []);
+          byTrip.get(key).push(p);
+        });
+        const groups = allTrips
+          .filter(t => byTrip.has(t.id) || (scope === "mine" && t.user_id === myId))
+          .map(t => ({ trip:t, items:byTrip.get(t.id) || [] }));
+        if (byTrip.has("none")) groups.push({ trip:null, items:byTrip.get("none") });
+        return groups;
+      }, [places, allTrips, tripById, scope, myId]);
+      const hasTrips = tripGroups.some(g => g.trip);   // 여행이 하나도 없으면 헤더 없이 기존 플랫 뷰
+
+      // 여행 이름 변경 / 삭제 (삭제 시 방문지는 미분류로 — FK on delete set null)
+      const renameTrip = async (t) => {
+        const name = prompt("여행 이름 변경", t.title);
+        if (!name?.trim() || name.trim() === t.title) return;
+        await sb.from("tm_trips").update({ title: name.trim() }).eq("id", t.id);
+        load();
+      };
+      const deleteTrip = async (t) => {
+        if (!confirm(`'${t.title}' 여행을 삭제할까요?\n방문지·다이어리는 남고 '미분류'로 이동합니다.`)) return;
+        await sb.from("tm_trips").delete().eq("id", t.id);
+        load();
+      };
 
       // 공유가 회수되면 사라진 지도에 갇히지 않도록 scope 복구
       useEffect(() => {
@@ -733,44 +1034,84 @@
         : (shares.owners.find(o => o.other_id === uid)?.other_email || "공유된 기록");
 
       // 방문국 Map: country(영문 GeoJSON명) → 대륙 (색칠 매칭용)
+      // + 함께 보기용 소유자 Map: country → mine | theirs | both
+      const ownershipRef = useRef(new Map());
+      const scopeRef = useRef("mine");
       useEffect(() => {
-        const m = new Map();
-        places.forEach(p => m.set(p.country, p.continent || "기타"));
+        scopeRef.current = scope;
+        const m = new Map(), own = new Map();
+        places.forEach(p => {
+          m.set(p.country, p.continent || "기타");
+          const who = p.user_id === myId ? "mine" : "theirs";
+          const cur = own.get(p.country);
+          own.set(p.country, cur && cur !== who ? "both" : (cur || who));
+        });
         visitedRef.current = m;
-      }, [places]);
+        ownershipRef.current = own;
+      }, [places, scope, myId]);
 
+      // 대륙별 진행률 (국가 수 기준 — UN 기준 대륙별 국가 수)
+      const CONT_TOTALS = { "아시아":48, "유럽":44, "아프리카":54, "북미":23, "남미":12, "오세아니아":14 };
       const stats = useMemo(() => {
         const countries = new Set(places.map(p => p.country));
-        const conts = new Set(places.map(p => p.continent).filter(c => c && c !== "기타"));
-        return { countries:countries.size, cities:places.length, continents:conts.size,
-                 progress: Math.round((conts.size/TOTAL_CONTINENTS)*100) };
+        const byCont = {};
+        places.forEach(p => {
+          const c = p.continent;
+          if (!c || c === "기타") return;
+          (byCont[c] = byCont[c] || new Set()).add(p.country);
+        });
+        const perCont = Object.entries(CONT_TOTALS).map(([name, total]) => ({
+          name, total, n: byCont[name]?.size || 0,
+          pct: Math.round(((byCont[name]?.size || 0) / total) * 100),
+        }));
+        return { countries:countries.size, cities:places.length,
+                 world: Math.round((countries.size/195)*100), perCont };
       }, [places]);
 
       // 스타일 정의
+      // 함께 보기(scope=all)에서는 대륙색 대신 소유자색: 나=인디고 / 상대=코랄 / 같이=사선 스트라이프
+      const OWN_FILL = { mine:"#4F46E5", theirs:"#FB7185", both:"#4F46E5" };  // both는 아래에서 패턴으로 덮음
       const styleFor = (feature, m) => {
-        const on = visitedRef.current.has(feature.properties.name);
+        const name = feature.properties.name;
+        const on = visitedRef.current.has(name);
+        const together = scopeRef.current === "all";
         if (m === "scratch") {
-          return on
-            ? { fillColor: REVEAL[visitedRef.current.get(feature.properties.name)] || "#60A5FA", fillOpacity:.92, color:"#fff", weight:1.2, opacity:.95, dashArray:null }
-            : { fillColor:"#D6DBEA", fillOpacity:.94, color:"#140F2E", weight:.6, opacity:.45, dashArray:null };
+          if (!on) return { fillColor:"#D6DBEA", fillOpacity:.94, color:"#140F2E", weight:.6, opacity:.45, dashArray:null };
+          const fill = together
+            ? OWN_FILL[ownershipRef.current.get(name)] || "#4F46E5"
+            : REVEAL[visitedRef.current.get(name)] || "#60A5FA";
+          return { fillColor:fill, fillOpacity:.92, color:"#fff", weight:1.2, opacity:.95, dashArray:null };
         }
-        return on
-          ? { fillColor:"#4F46E5", fillOpacity:.45, color:"#4338CA", weight:1.5, opacity:.9, dashArray:"3" }
-          : { fillColor:"#000", fillOpacity:0, color:"#000", weight:0, opacity:0, dashArray:null };
+        if (!on) return { fillColor:"#000", fillOpacity:0, color:"#000", weight:0, opacity:0, dashArray:null };
+        const fill = together ? (OWN_FILL[ownershipRef.current.get(name)] || "#4F46E5") : "#4F46E5";
+        return { fillColor:fill, fillOpacity:.45, color:fill, weight:1.5, opacity:.9, dashArray:"3" };
       };
+      // '같이 간 나라'는 setStyle 이후 SVG fill을 스트라이프 패턴으로 교체
+      const paintDual = (layer) => {
+        if (scopeRef.current !== "all") return;
+        if (ownershipRef.current.get(layer.feature?.properties?.name) !== "both") return;
+        layer.getElement()?.setAttribute("fill", "url(#dualStripe)");
+      };
+      // hover: 대륙 컬러(민트 등)와 겹치지 않게 화이트/잉크 톤으로 분리
       const hoverStyle = m => m === "scratch"
-        ? { fillColor:"#5EEAD4", fillOpacity:.95, color:"#ffffff", weight:2.5, opacity:1, dashArray:null }
-        : { fillColor:"#4F46E5", fillOpacity:.5,  color:"#312E81", weight:2.5, opacity:1, dashArray:null };
+        ? { fillColor:"#ffffff", fillOpacity:.92, color:"#4F46E5", weight:2.5, opacity:1, dashArray:null }
+        : { fillColor:"#101527", fillOpacity:.35, color:"#101527", weight:2.5, opacity:1, dashArray:null };
 
       // ── 국경 GeoJSON 로드 (실패 시 재시도 가능) ──
       const loadGeo = useCallback(() => {
         setGeoErr(false);
         fetch(GEO_URL).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(geo => {
           const map = mapRef.current; if (!map || geoRef.current) return;   // 언마운트/중복 가드
-          geoRef.current = L.geoJSON(geo, {
+          geoDataRef.current = pacifyGeo(geo);
+          geoRef.current = L.geoJSON(geoDataRef.current, {
             style: f => styleFor(f, modeRef.current),
             onEachFeature: (f, layer) => {
               layer.bindTooltip(f.properties.name, { permanent:false, direction:"center", className:"ctry-label", opacity:1 });
+              // 국가명 위치 보정: 멀티폴리곤(러시아·중국 등)은 Leaflet 기본 중심이
+              // 구석으로 밀림 → 가장 큰 본토 조각의 bbox 중심에 라벨을 앉힌다.
+              // 날짜변경선(±180°)을 걸치는 나라는 경도를 +360 정규화 후 계산.
+              const ll = countryLabelPoint(f);
+              if (ll) layer.on("tooltipopen", ev => ev.tooltip.setLatLng(ll));
               layer.on("mouseover", () => {
                 layer.setStyle(hoverStyle(modeRef.current));
                 layer.bringToFront();
@@ -780,29 +1121,48 @@
               layer.on("mouseout", () => {
                 layer.getElement()?.classList.remove("ctry-hover");
                 layer.setStyle(styleFor(f, modeRef.current));
+                paintDual(layer);                            // 같이 간 나라면 스트라이프 복구
                 const keep = modeRef.current === "scratch" && visitedRef.current.has(f.properties.name);
                 if (!keep) layer.closeTooltip();
               });
               layer.on("click", (e) => {
                 if (addRef.current) {                       // 추가 모드: 그 나라에 방문지 새기기
-                  setPending({ country:f.properties.name, iso3:f.id, lat:e.latlng.lat, lng:e.latlng.lng });
+                  setPending({ country:f.properties.name, iso3:f.id, lat:e.latlng.lat, lng:normLng(e.latlng.lng) });
                   setAddMode(false);
                 }
               });
             },
           }).addTo(map);
+          // 함께 보기 '같이 간 나라'용 사선 스트라이프 패턴 (인디고/코랄 교차)
+          const svg = map.getPane("overlayPane").querySelector("svg");
+          if (svg && !svg.querySelector("#dualStripe")) {
+            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            defs.innerHTML = '<pattern id="dualStripe" width="14" height="14" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">'
+              + '<rect width="14" height="14" fill="#4F46E5"/><rect width="7" height="14" fill="#FB7185"/></pattern>';
+            svg.appendChild(defs);
+          }
           applyMode();                                       // 첫 스타일/라벨 적용
         }).catch(() => setGeoErr(true));                     // 네트워크 실패 → 재시도 UI
       }, []);
 
       // ── 지도 1회 초기화 (언마운트 시 리스너·인스턴스 정리) ──
       useEffect(() => {
-        const map = L.map("map", { worldCopyJump:true, minZoom:2, maxBounds:[[-85,-200],[85,200]] }).setView([25,20], 2.4);
+        // 초기 뷰: 대한민국 중심 (아시아·태평양이 정면에 오도록)
+        // zoomSnap 기본값(1)이면 줌이 정수로 스냅돼 세계지도가 화면보다 작아지고
+        // maxBounds에 걸려 중심이 서쪽으로 밀림 → 소수 줌 허용 + 화면 폭에 맞는 줌 계산
+        const map = L.map("map", { worldCopyJump:false, minZoom:2, zoomSnap:0.25, zoomDelta:0.5,
+          maxBounds:[[-85,-150],[85,450]] }).setView([32,127], 2.4);
         mapRef.current = map;
         tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
           { attribution:'© OpenStreetMap', maxZoom:18 }).addTo(map);
         const onResize = () => map.invalidateSize();
-        setTimeout(onResize, 200);
+        // 레이아웃 확정 후 크기 재계산 + 화면 폭을 채우는 줌으로 대한민국 재센터링
+        setTimeout(() => {
+          map.invalidateSize();
+          const w = document.getElementById("map")?.clientWidth || 1024;
+          const fitZoom = Math.max(2.2, Math.log2(w / 256));   // 세계지도가 가로를 채우는 줌
+          map.setView([32,127], Math.round(fitZoom * 4) / 4, { animate:false });
+        }, 250);
         window.addEventListener("resize", onResize);
         loadGeo();
         return () => {                                       // 로그아웃 후 재로그인 시 누수 방지
@@ -823,6 +1183,7 @@
         geoRef.current.eachLayer(layer => {
           const f = layer.feature;
           layer.setStyle(styleFor(f, modeRef.current));
+          paintDual(layer);                                  // 함께 보기: 같이 간 나라 스트라이프
           const show = modeRef.current === "scratch" && visitedRef.current.has(f.properties.name);
           const tip = layer.getTooltip();
           if (tip) { tip.options.permanent = show; show ? layer.openTooltip() : layer.closeTooltip(); }
@@ -831,27 +1192,168 @@
 
       useEffect(() => { modeRef.current = mode; applyMode(); }, [mode, applyMode]);
       useEffect(() => { applyMode(); }, [places, applyMode]);
+
+      // 저장 직후 해당 국가에 '긁기' 리빌 애니메이션 (색칠 반영 후 1회)
+      const revealRef = useRef(null);
+      useEffect(() => {
+        if (!revealRef.current || !geoRef.current) return;
+        const target = revealRef.current; revealRef.current = null;
+        geoRef.current.eachLayer(layer => {
+          if (layer.feature?.properties?.name !== target) return;
+          const el = layer.getElement(); if (!el) return;
+          el.classList.remove("ctry-scratched");
+          void el.getBoundingClientRect();          // 리플로우로 애니메이션 재시작 보장
+          el.classList.add("ctry-scratched");
+          setTimeout(() => el.classList.remove("ctry-scratched"), 1300);
+        });
+      }, [places]);
       useEffect(() => { addRef.current = addMode;
         document.getElementById("map")?.classList.toggle("adding", addMode); }, [addMode]);
 
       // 남의 지도를 볼 땐 추가 모드 해제
       useEffect(() => { if (readOnly) setAddMode(false); }, [readOnly]);
 
-      // ── 체크인 경로 (방문일 순서로 잇는 선) ──
+      // ── 체크인 경로 ──
+      // 순서: route_order(수동) 우선 → 없으면 방문일 → 그다음 등록일. 모든 방문지 포함.
+      const routeStops = useMemo(() => [...places].sort((a, b) => {
+        const ra = a.route_order ?? Infinity, rb = b.route_order ?? Infinity;
+        if (ra !== rb) return ra - rb;
+        const va = a.visited_at || "9999", vb = b.visited_at || "9999";
+        if (va !== vb) return va.localeCompare(vb);
+        return (a.created_at || "").localeCompare(b.created_at || "");
+      }), [places]);
+
       useEffect(() => {
         const map = mapRef.current; if (!map) return;
         if (routeRef.current) { map.removeLayer(routeRef.current); routeRef.current = null; }
-        if (!showRoute) return;
-        const pts = places
-          .filter(p => p.visited_at)
-          .sort((a,b) => a.visited_at.localeCompare(b.visited_at))
-          .map(p => [p.lat, p.lng]);
-        if (pts.length < 2) return;
-        routeRef.current = L.polyline(pts, {
-          color:"#4F46E5", weight:2.5, opacity:.95, dashArray:"7 7", lineCap:"round",
-        }).addTo(map);
-        routeRef.current.bringToFront();
-      }, [showRoute, places]);
+        if (!showRoute || routeStops.length < 2) return;
+
+        // 여행별로 경로를 분리 — 여행마다 자기 색, 순번도 여행 안에서 1부터
+        const byTrip = new Map();
+        routeStops.forEach(p => {
+          const key = p.trip_id && tripById.has(p.trip_id) ? p.trip_id : "none";
+          if (!byTrip.has(key)) byTrip.set(key, []);
+          byTrip.get(key).push(p);
+        });
+
+        const layers = [];
+        byTrip.forEach((stops, key) => {
+          const color = key === "none" ? "#8b93a7" : tripColor(key);   // 미분류는 회색
+          const pts = stops.map(p => [p.lat, dispLng(p.lng)]);
+          if (pts.length >= 2) {
+            const poly = L.polyline(pts, { color, weight:2.5, opacity:.95, dashArray:"7 7", lineCap:"round" });
+            layers.push(poly);
+          }
+          pts.forEach((ll, i) => layers.push(L.marker(ll, {
+            interactive:false,
+            icon: L.divIcon({ className:"",
+              html:`<div class="rnum" style="background:${color}">${i+1}</div>`,
+              iconSize:[18,18], iconAnchor:[9,30] }),
+          })));
+        });
+        routeRef.current = L.layerGroup(layers).addTo(map);
+      }, [showRoute, routeStops, tripById]);
+
+      // 경로 패널용: Travel Log와 같은 여행 그룹 구조 (지도 순번·색과 일치)
+      const routeGroups = useMemo(() => {
+        const byTrip = new Map();
+        routeStops.forEach(p => {
+          const key = p.trip_id && tripById.has(p.trip_id) ? p.trip_id : "none";
+          if (!byTrip.has(key)) byTrip.set(key, []);
+          byTrip.get(key).push(p);
+        });
+        const gs = allTrips.filter(t => byTrip.has(t.id)).map(t => ({
+          key:t.id, title:`🧳 ${t.title}`, color:t.color || "#4F46E5", items:byTrip.get(t.id) }));
+        if (byTrip.has("none")) gs.push({ key:"none", title:"미분류", color:"#8b93a7", items:byTrip.get("none") });
+        return gs;
+      }, [routeStops, allTrips, tripById]);
+
+      // ── 📸 내 지도 스크린샷: 스크래치 맵 전체를 캔버스로 그려 PNG 다운로드 ──
+      // (화면 캡처 대신 직접 렌더 — 줌 상태 무관하게 항상 전체 지도 + 타일 CORS 문제 없음)
+      const exportMap = () => {
+        const geo = geoDataRef.current; if (!geo) return;
+        const W = 1600, H = 1000, TOP = 130, BOT = 44, SIDE = 44;
+        const c = document.createElement("canvas"); c.width = W; c.height = H;
+        const x = c.getContext("2d");
+
+        x.fillStyle = "#140F2E"; x.fillRect(0, 0, W, H);
+
+        // 웹 메르카토르 투영 (위도 -56~76 크롭)
+        const merc = lat => Math.log(Math.tan(Math.PI/4 + Math.max(-85, Math.min(85, lat)) * Math.PI/360));
+        const yT = merc(76), yB = merc(-56), MH = H - TOP - BOT, MW = W - SIDE*2;
+        const px = lng => SIDE + (lng + 30) / 360 * MW;          // 태평양 좌표계: -30 ~ 330
+        const py = lat => TOP + (yT - merc(lat)) / (yT - yB) * MH;
+
+        // 국가 폴리곤 (외곽 링만)
+        geo.features.forEach(f => {
+          const name = f.properties.name;
+          const on = visitedRef.current.has(name);
+          const g = f.geometry;
+          x.beginPath();
+          (g.type === "Polygon" ? [g.coordinates] : g.coordinates).forEach(rings => {
+            rings[0].forEach(([lo, la], i) => i ? x.lineTo(px(lo), py(la)) : x.moveTo(px(lo), py(la)));
+            x.closePath();
+          });
+          x.fillStyle = on ? (REVEAL[visitedRef.current.get(name)] || "#60A5FA") : "#D6DBEA";
+          x.globalAlpha = on ? .92 : .85; x.fill(); x.globalAlpha = 1;
+          x.strokeStyle = on ? "#ffffff" : "#140F2E"; x.lineWidth = on ? 1.3 : .5; x.stroke();
+        });
+
+        // 여행 경로 (여행별 색·점선)
+        routeGroups.forEach(grp => {
+          if (grp.items.length < 2) return;
+          x.strokeStyle = grp.color; x.lineWidth = 2.5; x.setLineDash([9, 9]); x.lineCap = "round"; x.globalAlpha = .95;
+          x.beginPath();
+          grp.items.forEach((p, i) => {
+            const X = px(dispLng(p.lng)), Y = py(p.lat);
+            i ? x.lineTo(X, Y) : x.moveTo(X, Y);
+          });
+          x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+        });
+
+        // 방문지 핀 (점 + 국기)
+        places.forEach(p => {
+          const X = px(dispLng(p.lng)), Y = py(p.lat);
+          x.beginPath(); x.arc(X, Y, 7, 0, 7);
+          x.fillStyle = REVEAL[p.continent] || "#60A5FA"; x.fill();
+          x.lineWidth = 2.5; x.strokeStyle = "#fff"; x.stroke();
+          x.font = "16px sans-serif"; x.textAlign = "center"; x.textBaseline = "bottom";
+          x.fillText(p.flag || "🌍", X, Y - 9);
+        });
+
+        // 헤더 (로고 + 통계) / 푸터
+        const bg = x.createLinearGradient(SIDE, 36, SIDE + 56, 92);
+        bg.addColorStop(0, "#5EEAD4"); bg.addColorStop(.4, "#38BDF8"); bg.addColorStop(.75, "#4F46E5"); bg.addColorStop(1, "#6D28D9");
+        x.fillStyle = bg; x.beginPath(); x.roundRect(SIDE, 34, 56, 56, 15); x.fill();
+        x.font = "30px sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("🧭", SIDE + 28, 64);
+        x.textAlign = "left"; x.textBaseline = "alphabetic";
+        x.fillStyle = "#fff"; x.font = "800 40px Outfit, sans-serif"; x.fillText("Trailmark", SIDE + 72, 78);
+        const titleW = x.measureText("Trailmark").width;
+        x.fillStyle = "rgba(255,255,255,.75)"; x.font = "500 19px Pretendard, sans-serif";
+        x.fillText(`${stats.countries}개국 · ${stats.cities}개 도시의 기억`, SIDE + 72 + titleW + 26, 76);
+        x.textAlign = "right";
+        x.fillStyle = "rgba(255,255,255,.45)"; x.font = "600 15px Outfit, sans-serif";
+        x.fillText(`trailmark.co.kr · ${new Date().toISOString().slice(0,10)}`, W - SIDE, 76);
+        x.textAlign = "left";
+
+        c.toBlob(blob => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `trailmark-${new Date().toISOString().slice(0,10)}.png`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+        }, "image/png");
+      };
+
+      // 드래그 재정렬 → route_order 저장 (낙관적 갱신)
+      const saveRouteOrder = async (ordered) => {
+        setAllPlaces(prev => prev.map(p => {
+          const idx = ordered.findIndex(o => o.id === p.id);
+          return idx >= 0 ? { ...p, route_order: idx } : p;
+        }));
+        await Promise.all(ordered.map((p, i) =>
+          sb.from("tm_places").update({ route_order: i }).eq("id", p.id)));
+      };
 
       // ── 방문지 핀 동기화 ──
       useEffect(() => {
@@ -863,7 +1365,7 @@
           const icon = L.divIcon({ className:"",
             html:`<div class="pin" style="--c:${c1};--c2:${c2}"><span>${esc(p.flag||"🌍")}</span></div>`,
             iconSize:[34,34], iconAnchor:[17,34] });
-          const mk = L.marker([p.lat, p.lng], { icon }).addTo(map);
+          const mk = L.marker([p.lat, dispLng(p.lng)], { icon }).addTo(map);
           mk.bindPopup(`<b>${esc(p.country_ko||p.country)} · ${esc(p.city)}</b>`);
           mk.on("click", () => setSelected(p.id));
           markersRef.current[p.id] = mk;
@@ -881,7 +1383,7 @@
         const p = places.find(x => x.id === selected);
         if (p && mapRef.current && flownRef.current !== selected) {
           flownRef.current = selected;
-          mapRef.current.flyTo([p.lat, p.lng], 5, { duration:1 }); markersRef.current[p.id]?.openPopup();
+          mapRef.current.flyTo([p.lat, dispLng(p.lng)], 5, { duration:1 }); markersRef.current[p.id]?.openPopup();
         }
       }, [selected, places]);
 
@@ -927,14 +1429,23 @@
               <div className="w-px bg-[#e7eaf3] my-1" />
               <Stat label="도시 기록" value={stats.cities} />
               <div className="w-px bg-[#e7eaf3] my-1" />
-              <Stat label="대륙 진행률" value={`${stats.progress}%`} sub={`${stats.continents} / ${TOTAL_CONTINENTS}`} accent />
+              <Stat label="세계 정복" value={`${stats.world}%`} sub={`${stats.countries} / 195`} accent />
             </div>
 
-            {/* 대륙 진행 바 — 채움에만 그라데이션 */}
-            <div className="mx-4 mb-3">
-              <div className="h-1.5 rounded-full bg-[#e7eaf3] overflow-hidden">
-                <div className="h-full rounded-full aurora-bar transition-all duration-500" style={{width:`${stats.progress}%`}} />
-              </div>
+            {/* 대륙별 진행률 (국가 수 기준) */}
+            <div className="mx-4 mb-3 grid grid-cols-2 gap-x-4 gap-y-2 bg-white rounded-2xl border border-[#e7eaf3] px-4 py-3">
+              {stats.perCont.map(c => (
+                <div key={c.name}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10.5px] font-semibold text-[#5b6478]">{c.name}</span>
+                    <span className="mono-tag text-[9px] text-[#9aa2b5]">{c.n}<span className="text-[#d3d9e8]">/{c.total}</span></span>
+                  </div>
+                  <div className="h-1 mt-1 rounded-full bg-[#eef0f7] overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{width:`${Math.max(c.pct, c.n ? 4 : 0)}%`, background:REVEAL[c.name]}} />
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* 보고 있는 지도 선택 */}
@@ -990,11 +1501,39 @@
                   <div className="display text-[15px] font-semibold text-[#101527]">아직 긁은 나라가 없어요</div>
                   <div className="text-[12.5px] text-[#8b93a7] mt-1.5 leading-relaxed">‘방문지 추가’를 누르고<br/>다녀온 나라를 지도에서 긁어보세요.</div>
                 </div>}
-              {places.map(p => (
-                <DiaryCard key={p.id} p={p} active={p.id===selected}
-                  onClick={()=>setSelected(p.id===selected ? null : p.id)} onDelete={()=>remove(p.id)}
-                  canDelete={p.user_id === myId}
-                  ownerLabel={ownerEmail(p.user_id)} />
+              {tripGroups.map(g => (
+                <div key={g.trip?.id || "none"} className="space-y-3.5">
+                  {hasTrips && (
+                    <div className="group/th flex items-center gap-2 pt-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{background: g.trip ? (g.trip.color || "#4F46E5") : "#b6bdcd"}}></span>
+                      <span className="display text-[12.5px] font-bold text-[#101527] truncate">
+                        {g.trip ? `🧳 ${g.trip.title}` : "미분류"}
+                      </span>
+                      <span className="mono-tag text-[9.5px] text-[#b6bdcd]">{g.items.length}</span>
+                      {g.trip && g.trip.user_id === myId && (
+                        <span className="hidden group-hover/th:inline-flex gap-1.5">
+                          <button onClick={()=>renameTrip(g.trip)} title="이름 변경"
+                            className="text-[10px] text-[#9aa2b5] hover:text-[#4F46E5]">✎</button>
+                          <button onClick={()=>deleteTrip(g.trip)} title="여행 삭제"
+                            className="text-[10px] text-[#9aa2b5] hover:text-[#e11d48]">✕</button>
+                        </span>
+                      )}
+                      <div className="flex-1 h-px bg-[#e7eaf3]" />
+                    </div>
+                  )}
+                  {g.trip && g.items.length === 0 && (
+                    <div className="text-[11.5px] text-[#9aa2b5] pl-4">
+                      아직 방문지가 없어요 — ‘방문지 추가’에서 이 여행을 선택해보세요.
+                    </div>
+                  )}
+                  {g.items.map(p => (
+                    <DiaryCard key={p.id} p={p} active={p.id===selected}
+                      onClick={()=>setSelected(p.id===selected ? null : p.id)} onDelete={()=>remove(p.id)}
+                      canDelete={p.user_id === myId}
+                      ownerLabel={ownerEmail(p.user_id)} />
+                  ))}
+                </div>
               ))}
             </div>
           </aside>
@@ -1002,9 +1541,13 @@
           <main className="relative flex-1 h-[55vh] md:h-full">
             <div id="map" className="scratch"></div>
 
-            <div className="absolute top-3 left-3 z-[500] seg">
-              <button className={mode==="scratch" ? "on" : ""} onClick={()=>setMode("scratch")}>✦ 스크래치</button>
-              <button className={mode==="real" ? "on" : ""} onClick={()=>setMode("real")}>🛰️ 실사</button>
+            <div className="absolute top-3 left-3 z-[500] flex items-center gap-2">
+              <div className="seg">
+                <button className={mode==="scratch" ? "on" : ""} onClick={()=>setMode("scratch")}>✦ 스크래치</button>
+                <button className={mode==="real" ? "on" : ""} onClick={()=>setMode("real")}>🛰️ 실사</button>
+              </div>
+              <button onClick={exportMap} title="내 지도 이미지로 저장"
+                className="glass-strong w-9 h-9 rounded-full shadow-lg text-[15px] hover:scale-105 transition">📸</button>
             </div>
 
             {geoErr && (
@@ -1024,16 +1567,38 @@
               </div>
             )}
 
+            {/* 경로 편집 패널 */}
+            {showRoute && routeStops.length >= 2 && (
+              <div className="fade-in absolute top-14 left-3 z-[500]">
+                <RoutePanel groups={routeGroups} canEdit={!readOnly}
+                  onReorder={saveRouteOrder} onPick={id => setSelected(id)} />
+              </div>
+            )}
+
             {/* 범례 */}
             <div className="absolute top-3 right-3 z-[500] glass-strong px-3 py-2.5 rounded-2xl shadow-lg text-[11px] text-[#3b4256] space-y-1.5">
-              {mode==="scratch" ? (<>
+              {scope === "all" ? (<>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#4F46E5"}}></span>
+                  내가 간 나라
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#FB7185"}}></span>
+                  친구가 간 나라
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3.5 h-3.5 rounded-[5px]"
+                    style={{background:"repeating-linear-gradient(45deg,#4F46E5 0 3px,#FB7185 3px 6px)"}}></span>
+                  같이 간 나라
+                </div>
+              </>) : mode==="scratch" ? (<>
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#5EEAD4"}}></span>
-                  긁어낸 나라
+                  방문한 나라
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-3.5 h-3.5 rounded-[5px]" style={{background:"#D6DBEA"}}></span>
-                  아직 은박
+                  미방문 나라
                 </div>
               </>) : (
                 <div className="flex items-center gap-2">
@@ -1064,12 +1629,25 @@
                 <div className="perf" style={{"--notch":"#140F2E"}}></div>
 
                 <div className="px-4 pt-3.5 pb-4">
+                  {selPlace.trip_id && tripById.has(selPlace.trip_id) && (
+                    <span className="inline-flex items-center gap-1.5 mb-2 text-[10.5px] font-semibold px-2 py-1 rounded-full"
+                      style={{background:`${tripColor(selPlace.trip_id)}1a`, color:tripColor(selPlace.trip_id)}}>
+                      🧳 {tripById.get(selPlace.trip_id).title}
+                    </span>
+                  )}
                   {selEntry ? (<>
                     <h3 className="display font-bold text-[#101527] text-[17px] leading-snug">{selEntry.title}</h3>
                     {selEntry.body && <p className="text-[13.5px] text-[#5b6478] mt-2 leading-relaxed whitespace-pre-wrap">{selEntry.body}</p>}
                   </>) : <div className="text-[13.5px] text-[#9aa2b5]">다이어리가 아직 없어요.</div>}
 
-                  <GoogleRating place={selPlace} canFetch={selPlace.user_id === myId} />
+                  {/* 인스타 게시글 임베드 (공개 게시글만 표시됨) */}
+                  {selEntry?.insta_url && (instaEmbed(selEntry.insta_url)
+                    ? <iframe src={instaEmbed(selEntry.insta_url)} loading="lazy"
+                        className="w-full h-[400px] mt-3 rounded-xl border border-[#e7eaf3] bg-[#fafafa]"></iframe>
+                    : <a href={selEntry.insta_url} target="_blank" rel="noreferrer"
+                        className="block mt-3 text-[12.5px] font-semibold text-[#4F46E5] hover:underline">📷 인스타에서 보기 ↗</a>)}
+
+                  {SHOW_RATINGS && <GoogleRating place={selPlace} canFetch={selPlace.user_id === myId} />}
 
                   {selPlace.user_id === myId && (
                     <button onClick={()=>setEditing(selPlace)}
@@ -1082,10 +1660,10 @@
             )}
           </main>
 
-          {pending && <AddModal pending={pending} onClose={()=>setPending(null)}
-            onSaved={()=>{ setPending(null); load(); }} />}
+          {pending && <AddModal pending={pending} trips={myTrips} onClose={()=>setPending(null)}
+            onSaved={()=>{ revealRef.current = pending.country; setPending(null); load(); }} />}
 
-          {editing && <EditModal place={editing} onClose={()=>setEditing(null)}
+          {editing && <EditModal place={editing} trips={myTrips} onClose={()=>setEditing(null)}
             onSaved={()=>{ setEditing(null); load(); }} />}
 
           {sharePanel && <SharePanel shares={shares} onChanged={load} onClose={()=>setSharePanel(false)} />}
